@@ -6,6 +6,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.net.URI;
@@ -37,8 +39,8 @@ import java.util.concurrent.atomic.AtomicReference;
 public class OpenAIService {
 
     // API key cho OpenAI (nên lưu trong configuration)
-    // @Value("${openai.api.key}")
-    private String OPENAI_API_KEY = "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";
+    @Value("${openai.api.key}")
+    private String OPENAI_API_KEY;
 
     // Endpoint API của OpenAI
     private static final String API_URL = "https://api.openai.com/v1/chat/completions";

@@ -1,8 +1,12 @@
 package com.example.demo.service.chat.reranking;
 
-import com.example.demo.model.chat.ChatMessage;
+//import com.example.demo.model.chat.ChatMessage;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+
+import dev.langchain4j.data.message.ChatMessage;
+import dev.langchain4j.data.segment.TextSegment;
+import dev.langchain4j.store.embedding.EmbeddingMatch;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -33,9 +37,12 @@ public class CohereRerankClient {
         return cohereApiKey != null && !cohereApiKey.isBlank();
     }
 
-    public List<ChatMessage> rerank(String query, List<ChatMessage> documents, int topK) {
+    public List<EmbeddingMatch<TextSegment>> rerank(String query, List<EmbeddingMatch<TextSegment>> documents, int topK) {
         if (!isAvailable()) {
             throw new IllegalStateException("Cohere API key not configured");
+        }
+        if (documents == null || documents.isEmpty() || documents.size() <= topK) {
+            return documents;
         }
 
         try {
@@ -44,9 +51,9 @@ public class CohereRerankClient {
                 "model", rerankModel,
                 "query", query,
                 "documents", documents.stream()
-                    .map(ChatMessage::getContent)
+                    .map(match -> match.embedded().text()) // ✅ Lấy text từ TextSegment
                     .collect(Collectors.toList()),
-                "top_n", Math.min(topK * 2, documents.size()) // Lấy nhiều hơn để filter
+                "top_n", Math.min(topK * 2, documents.size())
             ));
 
             HttpRequest request = HttpRequest.newBuilder()

@@ -1,14 +1,15 @@
 package com.example.demo.service.chat.reranking;
 
 import com.example.demo.model.chat.ChatMessage;
-import com.example.demo.service.chat.integration.OpenAIService;
+import dev.langchain4j.model.chat.ChatLanguageModel;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
+import java.time.Duration;
+import java.time.LocalDateTime;
 import java.util.Comparator;
 import java.util.List;
-import java.util.Map;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -16,7 +17,7 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class LocalRerankStrategy {
 
-    private final OpenAIService openAIService;
+    private final ChatLanguageModel chatLanguageModel;
 
     public List<ChatMessage> rerank(String query, List<ChatMessage> messages, int topK) {
         if (messages.size() <= topK) {
@@ -32,21 +33,22 @@ public class LocalRerankStrategy {
         }
     }
 
-    private List<ChatMessage> rerankWithLLM(String query, List<ChatMessage> messages, int topK) throws Exception {
+    private List<ChatMessage> rerankWithLLM(String query, List<ChatMessage> messages, int topK) {
         // Tạo prompt cho LLM re-ranking
         String prompt = buildRerankPrompt(query, messages);
 
-        List<Map<String, String>> llmMessages = List.of(
-            Map.of("role", "system", "content", "Bạn là trợ lý đánh giá mức độ liên quan của văn bản."),
-            Map.of("role", "user", "content", prompt)
-        );
-
-        String response = openAIService.getChatCompletion(llmMessages, "gpt-3.5-turbo", 500);
-        return parseLLMResponse(response, messages, topK);
+        try {
+            String response = chatLanguageModel.generate(prompt);
+            return parseLLMResponse(response, messages, topK);
+        } catch (Exception e) {
+            log.warn("LLM reranking failed: {}", e.getMessage());
+            throw new RuntimeException("LLM reranking failed", e);
+        }
     }
 
     private String buildRerankPrompt(String query, List<ChatMessage> messages) {
         StringBuilder prompt = new StringBuilder();
+        prompt.append("Bạn là trợ lý đánh giá mức độ liên quan của văn bản.\n\n");
         prompt.append("Hãy đánh giá mức độ liên quan của các đoạn văn bản sau với câu hỏi: \"")
               .append(query).append("\"\n\n");
 
@@ -121,8 +123,8 @@ public class LocalRerankStrategy {
 
     private double calculateRecencyBonus(ChatMessage message) {
         // Message trong 24h gần đây được bonus điểm
-        long hoursDiff = java.time.Duration.between(
-            message.getTimestamp(), java.time.LocalDateTime.now()
+        long hoursDiff = Duration.between(
+            message.getTimestamp(), LocalDateTime.now()
         ).toHours();
         
         return hoursDiff <= 24 ? 0.1 : 0.0;

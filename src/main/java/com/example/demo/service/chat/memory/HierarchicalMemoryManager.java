@@ -1,11 +1,12 @@
 package com.example.demo.service.chat.memory;
 
+import dev.langchain4j.model.chat.ChatLanguageModel;
 import com.example.demo.model.chat.ChatSession;
 import com.example.demo.model.chat.HierarchicalMemory;
 import com.example.demo.model.chat.MemorySummary;
 import com.example.demo.repository.chat.memory.HierarchicalMemoryRepository;
 import com.example.demo.repository.chat.memory.MemorySummaryRepo;
-import com.example.demo.service.chat.integration.OpenAIService;
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Async;
@@ -31,9 +32,9 @@ public class HierarchicalMemoryManager {
     
     private final HierarchicalMemoryRepository hierarchicalMemoryRepository;
     private final MemorySummaryRepo memorySummaryRepo;
-    private final OpenAIService openAIService;
+    private final ChatLanguageModel chatLanguageModel;
     
- // Thêm cache
+    // Thêm cache
     private final Map<String, String> summaryCache = new ConcurrentHashMap<>();
     private final Map<String, LocalDateTime> cacheTimestamps = new ConcurrentHashMap<>();
     private static final long CACHE_DURATION_HOURS = 24;
@@ -342,16 +343,12 @@ public class HierarchicalMemoryManager {
         }
         
         try {
-            List<Map<String, String>> messages = List.of(
-                Map.of("role", "system", "content", 
-                    "Bạn là trợ lý tóm tắt chuyên nghiệp. Hãy tạo một bản tóm tắt cấp cao " +
+            String prompt = "Bạn là trợ lý tóm tắt chuyên nghiệp. Hãy tạo một bản tóm tắt cấp cao " +
                     "từ các bản tóm tắt con sau đây. Tập trung vào các ý chính, xu hướng, " +
-                    "và chủ đề quan trọng xuyên suốt."),
-                Map.of("role", "user", "content", 
-                    "Tạo bản tóm tắt cấp cao từ các tóm tắt sau:\n\n" + combinedContent)
-            );
+                    "và chủ đề quan trọng xuyên suốt.\n\n" +
+                    "Tạo bản tóm tắt cấp cao từ các tóm tắt sau:\n\n" + combinedContent;
             
-            String summary = openAIService.getChatCompletion(messages, "gpt-3.5-turbo", 200); // Giảm token
+            String summary = chatLanguageModel.generate(prompt);
             
             lastApiCallBySession.put(session.getId(), LocalDateTime.now());
             
@@ -420,6 +417,4 @@ public class HierarchicalMemoryManager {
         int segmentsInLevel = (int) Math.pow(SEGMENTS_PER_LEVEL, level);
         return (segment / segmentsInLevel) * segmentsInLevel;
     }
-    
-    
 }

@@ -3,18 +3,18 @@ CREATE EXTENSION IF NOT EXISTS vector;
 
 -- Create message_embeddings table
 CREATE TABLE IF NOT EXISTS message_embeddings (
-    id BIGSERIAL PRIMARY KEY,
+    id BIGSERIAL PRIMARY KEY, -- ◀️ TÊN GỐC
     message_id BIGINT REFERENCES chat_message(id) ON DELETE CASCADE,
     session_id BIGINT REFERENCES chat_session(id) ON DELETE CASCADE,
-    embedding_vector vector(1536),
-    content TEXT,
+    embedding_vector vector(1536), -- ◀️ TÊN GỐC
+    content TEXT, -- ◀️ TÊN GỐC
     created_at TIMESTAMP,
     updated_at TIMESTAMP
 );
 
 -- Create index for vector similarity search
 CREATE INDEX IF NOT EXISTS message_embeddings_session_idx 
-ON message_embeddings USING ivfflat (embedding_vector vector_cosine_ops)
+ON message_embeddings USING ivfflat (embedding_vector vector_cosine_ops) -- ◀️ TÊN GỐC
 WITH (lists = 100)
 WHERE session_id IS NOT NULL;
 
@@ -42,7 +42,7 @@ ADD COLUMN IF NOT EXISTS metadata JSONB;
 COMMENT ON COLUMN message_embeddings.metadata IS 'Metadata for chunk information (type, token count, overlap, etc.)';
 
 CREATE INDEX IF NOT EXISTS message_embeddings_session_hnsw_idx 
-ON message_embeddings USING hnsw (embedding_vector vector_cosine_ops)
+ON message_embeddings USING hnsw (embedding_vector vector_cosine_ops) -- ◀️ TÊN GỐC
 WITH (m = 16, ef_construction = 64)
 WHERE session_id IS NOT NULL AND text_chunk_id IS NOT NULL;
 
@@ -57,11 +57,6 @@ ON message_embeddings USING gin (
     (metadata->'token_count'),
     (metadata->'has_overlap')
 );
-
--- Index cho full-text search trên chunk content
-CREATE INDEX IF NOT EXISTS message_embeddings_chunk_tsvector_idx 
-ON message_embeddings USING GIN(content_tsvector)
-WHERE text_chunk_id IS NOT NULL;
 
 -- Thêm các column metadata quan trọng
 ALTER TABLE message_embeddings 

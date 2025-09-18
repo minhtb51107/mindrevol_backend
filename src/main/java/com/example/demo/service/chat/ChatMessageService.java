@@ -17,7 +17,7 @@ import com.example.demo.repository.chat.ChatMessageRepository;
 import com.example.demo.repository.chat.ChatSessionRepository;
 import com.example.demo.service.chat.memory.CachedEmbeddingService;
 import com.example.demo.service.chat.util.EmbeddingService;
-import com.example.demo.service.chat.vector.VectorStoreService;
+//import com.example.demo.service.chat.vector.VectorStoreService;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -28,7 +28,7 @@ import lombok.extern.slf4j.Slf4j;
 public class ChatMessageService {
 
     private final CachedEmbeddingService cachedEmbeddingService; // Thêm service cache
-    private final VectorStoreService vectorStoreService; // Thêm dependency
+    //private final VectorStoreService vectorStoreService; // Thêm dependency
     /**
      * Kiểm tra chuyển chủ đề giữa hai message cuối cùng bằng embedding
      * Trả về true nếu chủ đề thay đổi rõ rệt
@@ -120,14 +120,6 @@ public class ChatMessageService {
         message.setTimestamp(LocalDateTime.now());
         
         ChatMessage savedMessage = chatMessageRepository.save(message);
-        
-        // Tự động lưu embedding vào vector database
-        try {
-            vectorStoreService.saveMessageEmbedding(savedMessage, session);
-            log.debug("Đã lưu embedding cho message {}", savedMessage.getId());
-        } catch (Exception e) {
-            log.warn("Không thể lưu embedding cho message {}: {}", savedMessage.getId(), e.getMessage());
-        }
         
         return savedMessage;
     }

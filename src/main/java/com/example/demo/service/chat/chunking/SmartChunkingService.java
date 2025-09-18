@@ -3,7 +3,7 @@ package com.example.demo.service.chat.chunking;
 import com.example.demo.model.chat.ChatMessage;
 import com.example.demo.model.chat.TextChunk;
 import com.example.demo.repository.chat.TextChunkRepository;
-import com.example.demo.service.chat.integration.OpenAIService;
+import dev.langchain4j.model.chat.ChatLanguageModel;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -12,7 +12,6 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 
 @Slf4j
 @Service
@@ -21,7 +20,7 @@ public class SmartChunkingService {
 
     private final TextChunkRepository chunkRepository;
     private final TokenCounterService tokenCounterService;
-    private final OpenAIService openAIService;
+    private final ChatLanguageModel chatLanguageModel;
     
     private static final double AVG_CHARS_PER_TOKEN = 3.5;
     private static final int DEFAULT_CHUNK_SIZE = 500; // tokens
@@ -60,7 +59,7 @@ public class SmartChunkingService {
             .tokenCount(tokenCount)
             .hasOverlap(false)
             .createdAt(LocalDateTime.now())
-            .detectedTopic(topic) // ✅ THÊM TOPIC
+            .detectedTopic(topic)
             .build();
     }
 
@@ -85,7 +84,7 @@ public class SmartChunkingService {
                 .tokenCount(tokenCounterService.countTokens(chunkContent))
                 .hasOverlap(chunkIndex > 0)
                 .createdAt(LocalDateTime.now())
-                .detectedTopic(topic) // ✅ THÊM TOPIC
+                .detectedTopic(topic)
                 .build());
 
             // Overlap logic
@@ -120,7 +119,7 @@ public class SmartChunkingService {
                     .tokenCount(paraTokenCount)
                     .hasOverlap(false)
                     .createdAt(LocalDateTime.now())
-                    .detectedTopic(topic) // ✅ THÊM TOPIC
+                    .detectedTopic(topic)
                     .build());
             }
         }
@@ -157,7 +156,7 @@ public class SmartChunkingService {
                             .tokenCount(sectionTokenCount)
                             .hasOverlap(false)
                             .createdAt(LocalDateTime.now())
-                            .detectedTopic(topic) // ✅ THÊM TOPIC
+                            .detectedTopic(topic)
                             .build());
                     }
                 }
@@ -191,7 +190,7 @@ public class SmartChunkingService {
                 .tokenCount(tokenCounterService.countTokens(chunkContent))
                 .hasOverlap(chunkIndex > 0)
                 .createdAt(LocalDateTime.now())
-                .detectedTopic(topic) // ✅ THÊM TOPIC
+                .detectedTopic(topic)
                 .build());
 
             // Overlap logic - move start position with overlap for next chunk
@@ -253,16 +252,16 @@ public class SmartChunkingService {
     // ✅ AI-BASED TOPIC DETECTION (WITH FALLBACK)
     private String detectTopicWithAI(String content) {
         try {
-            List<Map<String, String>> messages = List.of(
-                Map.of("role", "system", "content", 
-                    "Phân tích đoạn văn và trả về 1 từ khóa chủ đề duy nhất. " +
+            String systemPrompt = "Phân tích đoạn văn và trả về 1 từ khóa chủ đề duy nhất. " +
                     "Chỉ trả về từ khóa, không giải thích. " +
-                    "Các chủ đề phổ biến: programming, weather, music, sports, food, general."),
-                Map.of("role", "user", "content", 
-                    "Xác định chủ đề cho đoạn văn sau: " + content.substring(0, Math.min(200, content.length())))
-            );
+                    "Các chủ đề phổ biến: programming, weather, music, sports, food, general.";
             
-            String topic = openAIService.getChatCompletion(messages, "gpt-3.5-turbo", 10);
+            String userPrompt = "Xác định chủ đề cho đoạn văn sau: " + 
+                    content.substring(0, Math.min(200, content.length()));
+            
+            String fullPrompt = systemPrompt + "\n\n" + userPrompt;
+            String topic = chatLanguageModel.generate(fullPrompt);
+            
             return topic != null ? topic.trim().toLowerCase() : "general";
         } catch (Exception e) {
             log.warn("AI topic detection failed, using fallback: {}", e.getMessage());

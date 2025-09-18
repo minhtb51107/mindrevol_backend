@@ -1,14 +1,14 @@
 // src/main/java/com/example/demo/service/chat/emotion/EmotionAnalysisService.java
 package com.example.demo.service.chat.emotion;
 
+import dev.langchain4j.model.chat.ChatLanguageModel;
 import com.example.demo.model.chat.EmotionContext;
-import com.example.demo.service.chat.integration.OpenAIService;
+
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.regex.Pattern;
 
@@ -16,8 +16,9 @@ import java.util.regex.Pattern;
 @RequiredArgsConstructor
 public class EmotionAnalysisService {
     
-    private final OpenAIService openAIService;
- // Thay thế Map.of() bằng HashMap truyền thống
+    private final ChatLanguageModel chatLanguageModel;
+    
+    // Thay thế Map.of() bằng HashMap truyền thống
     private static final Map<String, Double> EMOTION_KEYWORDS = createEmotionKeywords();
 
     private static Map<String, Double> createEmotionKeywords() {
@@ -41,13 +42,17 @@ public class EmotionAnalysisService {
     }
     
     // Emotion patterns với regex
-    private static final Map<Pattern, String> EMOTION_PATTERNS = Map.of(
-        Pattern.compile("(?i)(very|really|extremely|so) (happy|excited|joyful)"), "excited",
-        Pattern.compile("(?i)(not good|not happy|unhappy|sad)"), "sad",
-        Pattern.compile("(?i)(angry|mad|furious|pissed)"), "angry",
-        Pattern.compile("(?i)(\\!\\!|\\!{2,})"), "excited",
-        Pattern.compile("(?i)(\\?\\?|\\?{2,})"), "confused"
-    );
+    private static final Map<Pattern, String> EMOTION_PATTERNS = createEmotionPatterns();
+
+    private static Map<Pattern, String> createEmotionPatterns() {
+        Map<Pattern, String> patterns = new HashMap<>();
+        patterns.put(Pattern.compile("(?i)(very|really|extremely|so) (happy|excited|joyful)"), "excited");
+        patterns.put(Pattern.compile("(?i)(not good|not happy|unhappy|sad)"), "sad");
+        patterns.put(Pattern.compile("(?i)(angry|mad|furious|pissed)"), "angry");
+        patterns.put(Pattern.compile("(?i)(\\!\\!|\\!{2,})"), "excited");
+        patterns.put(Pattern.compile("(?i)(\\?\\?|\\?{2,})"), "confused");
+        return Collections.unmodifiableMap(patterns);
+    }
     
     public EmotionContext analyzeEmotion(String text, EmotionContext existingContext) {
         EmotionContext context = existingContext != null ? existingContext : new EmotionContext();
@@ -121,11 +126,7 @@ public class EmotionAnalysisService {
         try {
             String prompt = "Phân tích cảm xúc của đoạn text sau. Trả về JSON format: {\"emotion\": \"\", \"intensity\": 0.0, \"confidence\": 0.0}\n\nText: " + text;
             
-            String response = openAIService.getChatCompletion(
-                List.of(Map.of("role", "user", "content", prompt)),
-                "gpt-3.5-turbo",
-                100
-            );
+            String response = chatLanguageModel.generate(prompt);
             
             // Parse JSON response (simplified)
             return Map.of(
@@ -135,7 +136,12 @@ public class EmotionAnalysisService {
             );
             
         } catch (Exception e) {
-            return Map.of("emotion", "neutral", "intensity", 0.5, "confidence", 0.5);
+            // Sử dụng HashMap thay vì Map.of() để tránh lỗi với null values
+            Map<String, Object> fallback = new HashMap<>();
+            fallback.put("emotion", "neutral");
+            fallback.put("intensity", 0.5);
+            fallback.put("confidence", 0.5);
+            return fallback;
         }
     }
     
