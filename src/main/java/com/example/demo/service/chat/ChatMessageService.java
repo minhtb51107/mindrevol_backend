@@ -15,8 +15,7 @@ import com.example.demo.model.chat.ChatMessage;
 import com.example.demo.model.chat.ChatSession;
 import com.example.demo.repository.chat.ChatMessageRepository;
 import com.example.demo.repository.chat.ChatSessionRepository;
-//import com.example.demo.service.chat.memory.CachedEmbeddingService;
-import com.example.demo.service.chat.util.EmbeddingService;
+//import com.example.demo.service.chat.memory.MemorySummaryManager;
 //import com.example.demo.service.chat.vector.VectorStoreService;
 
 import lombok.RequiredArgsConstructor;
@@ -27,27 +26,29 @@ import lombok.extern.slf4j.Slf4j;
 @RequiredArgsConstructor
 public class ChatMessageService {
 
-    //private final CachedEmbeddingService cachedEmbeddingService; // Thêm service cache
-    //private final VectorStoreService vectorStoreService; // Thêm dependency
+    //private final VectorStoreService vectorStoreService;
+    private final ChatMessageRepository chatMessageRepository;
+    private final ChatSessionRepository chatSessionRepo;
+    //private final MemorySummaryManager memorySummaryManager; // Thêm dependency này
+
     /**
      * Kiểm tra chuyển chủ đề giữa hai message cuối cùng bằng embedding
      * Trả về true nếu chủ đề thay đổi rõ rệt
      */
-    public boolean isTopicShift(List<ChatMessage> messages, EmbeddingService embeddingService) {
+    /*
+    public boolean isTopicShift(List<ChatMessage> messages) {
         if (messages == null || messages.size() < 2) return false;
         ChatMessage prev = messages.get(messages.size() - 2);
         ChatMessage latest = messages.get(messages.size() - 1);
         try {
-            boolean similar = embeddingService.isSimilar(prev.getContent(), latest.getContent());
+            boolean similar = memorySummaryManager.isSimilar(prev.getContent(), latest.getContent());
             return !similar;
         } catch (Exception e) {
-            // Nếu lỗi embedding, giả sử không chuyển chủ đề
+            log.warn("Lỗi khi kiểm tra chuyển chủ đề: {}", e.getMessage());
             return false;
         }
     }
-    private final ChatMessageRepository chatMessageRepository;
-    private final ChatSessionRepository chatSessionRepo;
-    private final EmbeddingService embeddingService;
+    */
     
     public List<ChatMessage> getMessagesForSession(Long sessionId, User user) {
         ChatSession session = chatSessionRepo.findById(sessionId)
@@ -83,7 +84,7 @@ public class ChatMessageService {
         Pageable pageable = PageRequest.of(0, limit);
         List<ChatMessage> messages = chatMessageRepository.findByChatSession_IdOrderByTimestampDesc(sessionId, pageable);
         
-        // ✅ ĐẢO NGƯỢC ĐỂ CÓ THỨ TỰ THỜI GIAN ĐÚNG (cũ -> mới)
+        // ✅ ĐẢO NGƯỢỢC ĐỂ CÓ THỨ TỰ THỜI GIAN ĐÚNG (cũ -> mới)
         Collections.reverse(messages);
         
         return messages;
@@ -120,6 +121,14 @@ public class ChatMessageService {
         message.setTimestamp(LocalDateTime.now());
         
         ChatMessage savedMessage = chatMessageRepository.save(message);
+        
+        // Tự động lưu embedding vào vector database
+//        try {
+//            vectorStoreService.saveMessageEmbedding(savedMessage, session);
+//            log.debug("Đã lưu embedding cho message {}", savedMessage.getId());
+//        } catch (Exception e) {
+//            log.warn("Không thể lưu embedding cho message {}: {}", savedMessage.getId(), e.getMessage());
+//        }
         
         return savedMessage;
     }

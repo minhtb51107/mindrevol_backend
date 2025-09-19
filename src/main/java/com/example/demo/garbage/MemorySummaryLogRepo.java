@@ -11,3 +11,5 @@
 //public interface MemorySummaryLogRepo extends JpaRepository<MemorySummaryLog, Long> {
 //    List<MemorySummaryLog> findBySession(ChatSession session);
 //}
+
+
