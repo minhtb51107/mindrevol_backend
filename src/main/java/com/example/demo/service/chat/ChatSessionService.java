@@ -11,8 +11,8 @@ import com.example.demo.model.auth.User;
 import com.example.demo.model.chat.ChatSession;
 import com.example.demo.repository.chat.ChatMessageRepository;
 import com.example.demo.repository.chat.ChatSessionRepository;
-import com.example.demo.repository.chat.MessageEmbeddingRepository;
-import com.example.demo.repository.chat.TextChunkRepository;
+//import com.example.demo.repository.chat.MessageEmbeddingRepository;
+//import com.example.demo.repository.chat.TextChunkRepository;
 import com.example.demo.repository.chat.ConversationStateRepository.ConversationStateRepository;
 import com.example.demo.repository.chat.EmotionContextRepository.EmotionContextRepository;
 //import com.example.demo.repository.chat.memory.MemorySummaryLogRepo;
@@ -28,8 +28,8 @@ public class ChatSessionService {
     //private final MemorySummaryLogRepo memorySummaryLogRepo;
     private final ConversationStateRepository conversationStateRepo; // ✅ THÊM
     private final EmotionContextRepository emotionContextRepo; // ✅ THÊM
-    private final TextChunkRepository chunkRepository;
-    private final MessageEmbeddingRepository embeddingRepository;
+//    private final TextChunkRepository chunkRepository;
+//    private final MessageEmbeddingRepository embeddingRepository;
     private final ChatMessageRepository chatMessageRepository;
 
     public ChatSession createSession(User user, String title) {
@@ -95,11 +95,11 @@ public class ChatSessionService {
         conversationStateRepo.deleteByChatSessionId(sessionId);
         emotionContextRepo.deleteByChatSessionId(sessionId);
 
-        // 3. Xóa message embeddings trước
-        embeddingRepository.deleteByChatSessionId(sessionId);
-
-        // 4. Xóa text chunks
-        chunkRepository.deleteByChatSessionId(sessionId);
+//        // 3. Xóa message embeddings trước
+//        embeddingRepository.deleteByChatSessionId(sessionId);
+//
+//        // 4. Xóa text chunks
+//        chunkRepository.deleteByChatSessionId(sessionId);
 
         // 5. Xóa messages
         chatMessageRepository.deleteByChatSessionId(sessionId);

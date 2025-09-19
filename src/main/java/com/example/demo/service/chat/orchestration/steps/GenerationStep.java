@@ -31,10 +31,14 @@ public class GenerationStep implements RagStep {
         // 2. Lấy bối cảnh RAG (sẽ là rỗng nếu là CHITCHAT)
         String ragContext = context.getRagContextString() != null ? context.getRagContextString() : "";
 
+        // ✅ LẤY FILE CONTEXT
+        String fileContext = context.getFileContext(); 
+
         // 3. Build prompt
         List<ChatMessage> finalLcMessages = buildFinalLc4jMessages(
                 context.getChatMemory().messages(),
                 ragContext,
+                fileContext, // ✅ TRUYỀN VÀO
                 userPrefs,
                 context.getInitialQuery()
         );
@@ -51,9 +55,11 @@ public class GenerationStep implements RagStep {
     }
 
     // Di chuyển logic build prompt từ ChatAIService
+    // ✅ SỬA LẠI HÀM NÀY
     private List<ChatMessage> buildFinalLc4jMessages(
             List<ChatMessage> history,
             String ragContext,
+            String fileContext, // ✅ THÊM THAM SỐ MỚI
             Map<String, Object> userPrefsMap,
             String currentQuery) {
 
@@ -68,9 +74,18 @@ public class GenerationStep implements RagStep {
             });
         }
 
-        sb.append("\n--- BỐI CẢNH NGẮN HẠN (TỪ RAG) ---\n");
+        // ✅ LOGIC MỚI: ƯU TIÊN FILE CONTEXT
+     // LOGIC MỚI: ƯU TIÊN FILE CONTEXT
+        if (fileContext != null && !fileContext.isBlank()) {
+            sb.append("\n--- NGỮ CẢNH TỪ FILE ĐÍNH KÈM (ƯU TIÊN CAO) ---\n");
+            sb.append(fileContext).append("\n");
+            sb.append("--- HẾT NGỮ CẢNH FILE ---\n\n");
+        }
+
+        // ✅ SỬA LẠI PROMPT
+        sb.append("\n--- BỐI CẢNH TỪ BỘ NHỚ RAG (NẾU CÓ) ---\n");
         sb.append(ragContext.isEmpty() ? "Không có" : ragContext).append("\n");
-        sb.append("\n--- HẾT BỐI CẢNH ---\n\nHãy trả lời câu hỏi hiện tại.");
+        sb.append("\n--- HẾT BỐI CẢNH ---\n\nHãy trả lời câu hỏi hiện tại dựa trên các ngữ cảnh trên (ưu tiên ngữ cảnh file).");
 
         messages.add(SystemMessage.from(sb.toString()));
         messages.addAll(history);

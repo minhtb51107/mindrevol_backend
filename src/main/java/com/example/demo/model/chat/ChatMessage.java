@@ -46,9 +46,9 @@ public class ChatMessage {
     @JoinColumn(name = "user_id")
     private User user;
     
-    @OneToMany(mappedBy = "originalMessage", cascade = CascadeType.ALL, orphanRemoval = true)
-    @JsonIgnore
-    private List<TextChunk> textChunks = new ArrayList<>();
+//    @OneToMany(mappedBy = "originalMessage", cascade = CascadeType.ALL, orphanRemoval = true)
+//    @JsonIgnore
+//    private List<TextChunk> textChunks = new ArrayList<>();
 
     public ChatMessage(String sender, String content) {
         this.sender = sender;

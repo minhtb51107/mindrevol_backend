@@ -1,5 +1,6 @@
 package com.example.demo.service.chat;
 
+import java.io.File; // ✅ THÊM MỚI
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -14,6 +15,7 @@ import java.util.stream.Collectors;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
+import org.springframework.web.multipart.MultipartFile; // ✅ THÊM MỚI
 
 import com.example.demo.dto.chat.ChatMessageDTO;
 import com.example.demo.model.auth.User;
@@ -40,6 +42,7 @@ import com.example.demo.service.chat.state.ConversationStateService;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 
+import dev.langchain4j.data.document.Document; // ✅ THÊM MỚI
 import dev.langchain4j.data.document.Metadata;
 import dev.langchain4j.data.embedding.Embedding;
 import dev.langchain4j.data.message.AiMessage;
@@ -56,6 +59,7 @@ import dev.langchain4j.rag.query.Query;
 import dev.langchain4j.store.embedding.EmbeddingStore;
 
 import com.example.demo.service.chat.fallback.FallbackService;
+import com.example.demo.service.document.FileProcessingService; // ✅ THÊM MỚI
 //import com.example.demo.service.chat.integration.OpenAIService;
 //import com.example.demo.service.chat.integration.SpringAIChatService;
 // import com.example.demo.service.chat.memory.HierarchicalMemoryManager; // 🔥 ĐÃ XÓA
@@ -128,6 +132,9 @@ public class ChatAIService {
     private final GenerationStep generationStep;
     private final MemoryQueryStep memoryQueryStep;
     
+    // ✅ THÊM SERVICE MỚI
+    private final FileProcessingService fileProcessingService;
+    
     // private final LangChainChatMemoryService langChain4jMemoryService; // 🔥 ĐÃ XÓA (Bị trùng)
 
 
@@ -161,6 +168,7 @@ public class ChatAIService {
                     .session(session)
                     .chatMemory(chatMemory)
                     .intent(intent)
+                    // ✅ Không có fileContext ở đây
                     .build();
 
             // 3. Chọn Pipeline (Strategy Pattern) và thực thi
@@ -196,6 +204,82 @@ public class ChatAIService {
         } catch (Exception e) {
             log.error("Lỗi xử lý processMessages: {}", e.getMessage(), e);
             return fallbackService.getEmergencyResponse();
+        }
+    }
+
+    // ✅ PHƯƠNG THỨC MỚI ĐỂ XỬ LÝ FILE UPLOAD
+    public String processMessages(Long sessionId, String prompt, MultipartFile file, User user) {
+        File tempFile = null;
+        try {
+            ChatSession session = sessionRepo.findById(sessionId)
+                    .orElseThrow(() -> new IllegalArgumentException("Session không tồn tại"));
+
+            ChatMemory chatMemory = langChainChatMemoryService.getChatMemory(sessionId);
+            
+            if (chatMemory.messages().isEmpty()) {
+                 log.debug("Chat memory for session {} is empty. Hydrating from database...", sessionId);
+                 hydrateChatMemoryFromDB(chatMemory, sessionId);
+            }
+
+            // ✅ LOGIC XỬ LÝ FILE ĐÍNH KÈM (MỚI)
+            String fileContext = null;
+            if (file != null && !file.isEmpty()) {
+                log.debug("Processing attached file: {}", file.getOriginalFilename());
+                tempFile = fileProcessingService.convertMultiPartToFile(file);
+                Document document = fileProcessingService.loadDocument(tempFile);
+                fileContext = document.text(); // Lấy TOÀN BỘ text của file
+            }
+
+            runContextAnalysisAsync(session, user, prompt);
+
+            // === 🔥 BẮT ĐẦU ORCHESTRATION MỚI ===
+            RagContext.QueryIntent intent = classifyQueryIntent(prompt);
+            log.debug("Query intent classified as: {}", intent);
+
+            RagContext context = RagContext.builder()
+                    .initialQuery(prompt)
+                    .user(user)
+                    .session(session)
+                    .chatMemory(chatMemory)
+                    .intent(intent)
+                    .fileContext(fileContext) // ✅ TRUYỀN CONTEXT CỦA FILE VÀO
+                    .build();
+
+            // 3. Chọn Pipeline (Strategy Pattern) và thực thi
+            if (intent == RagContext.QueryIntent.RAG_QUERY) {
+                log.debug("Handling as RAG_QUERY. Running full RAG pipeline.");
+                context = retrievalStep.execute(context);
+                context = rerankingStep.execute(context);
+                context = generationStep.execute(context);
+                
+            } else if (intent == RagContext.QueryIntent.CHITCHAT) {
+                log.debug("Handling as CHITCHAT. Skipping RAG.");
+                context = generationStep.execute(context); 
+                
+            } else { // MEMORY_QUERY
+                log.debug("Handling as MEMORY_QUERY. Using direct memory handler.");
+                context = memoryQueryStep.execute(context);
+            }
+            
+            // 4. Lấy kết quả
+            String reply = context.getReply();
+
+            // 5. Cập nhật bộ nhớ & Lưu trữ
+            chatMemory.add(UserMessage.from(prompt));
+            chatMemory.add(AiMessage.from(reply));
+
+            ChatMessage userMsgDb = messageService.saveMessage(session, "user", prompt);
+            ChatMessage aiMsgDb = messageService.saveMessage(session, "assistant", reply);
+            saveMessagesToVectorStore(userMsgDb, aiMsgDb, session); 
+            
+            return reply;
+
+        } catch (Exception e) {
+            log.error("Lỗi xử lý processMessages: {}", e.getMessage(), e);
+            return fallbackService.getEmergencyResponse();
+        } finally {
+            // ✅ Dọn dẹp file tạm (nếu có)
+            fileProcessingService.deleteTempFile(tempFile);
         }
     }
  

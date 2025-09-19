@@ -2,7 +2,7 @@
 package com.example.demo.controller.chat;
 
 import com.example.demo.dto.chat.ChatMessageDTO;
-import com.example.demo.dto.chat.ChatRequest;
+// import com.example.demo.dto.chat.ChatRequest; // ✅ ĐÃ XÓA
 import com.example.demo.model.auth.User;
 import com.example.demo.model.chat.ChatMessage;
 import com.example.demo.repository.auth.UserRepository;
@@ -13,9 +13,10 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile; // ✅ THÊM MỚI
 
 import java.util.List;
-import java.util.Map;
+// import java.util.Map; // ✅ ĐÃ XÓA
 
 // Đánh dấu đây là controller xử lý REST API
 @RestController
@@ -33,52 +34,35 @@ public class ChatMessageController {
     private final JwtUtil jwtUtil; // Utility xử lý JWT token
     private final UserRepository userRepository; // Repository truy cập dữ liệu user
 
-    // Endpoint gửi một tin nhắn mới
+    // ✅ THAY ĐỔI HOÀN TOÀN ENDPOINT 'sendMessage'
     @PostMapping
-    public ResponseEntity<?> sendMessage(
+    public ResponseEntity<String> sendMessage(
             @PathVariable("sessionId") Long sessionId, // Lấy sessionId từ đường dẫn
             @RequestHeader("Authorization") String authHeader, // Lấy token từ header
-            @RequestBody Map<String, String> request) { // Lấy nội dung từ request body
+            // Sử dụng @RequestParam thay vì @RequestBody
+            @RequestParam("content") String content,
+            @RequestParam(value = "file", required = false) MultipartFile file
+    ) {
         
         // Xác thực và lấy thông tin user từ token
         User user = extractUserFromAuth(authHeader);
-        // Lấy nội dung tin nhắn từ request
-        String content = request.get("content");
-        // Kiểm tra nội dung tin nhắn không được trống
-        if (content == null || content.trim().isEmpty()) {
-            return ResponseEntity.badRequest().body("Nội dung không được để trống");
+        
+        // Kiểm tra xem file có hợp lệ không (ví dụ: không rỗng nhưng không có nội dung)
+        if (file != null && file.isEmpty()) {
+            file = null;
         }
 
-        // Tạo đối tượng ChatMessageDTO từ nội dung tin nhắn
-        ChatMessageDTO input = new ChatMessageDTO();
-        input.setRole("user"); // Vai trò là người dùng
-        input.setContent(content); // Nội dung tin nhắn
-        List<ChatMessageDTO> messages = List.of(input); // Tạo danh sách chỉ chứa tin nhắn này
-
-        // Gửi tin nhắn đến AI service và nhận phản hồi
-        String reply = chatAIService.processMessages(sessionId, messages, user);
-        // Trả về phản hồi từ AI dưới dạng JSON
-        return ResponseEntity.ok(Map.of("content", reply));
-    }
-
-    // Endpoint gửi một loạt tin nhắn (batch)
-    @PostMapping("/batch")
-    public ResponseEntity<String> chat(
-            @PathVariable Long sessionId, // Lấy sessionId từ đường dẫn
-            @RequestHeader("Authorization") String authHeader, // Lấy token từ header
-            @RequestBody ChatRequest request) { // Lấy danh sách tin nhắn từ request body
+        // Gọi service chính với (text) và (file)
+        String aiResponse = chatAIService.processMessages(sessionId, content, file, user);
         
-        // Xác thực và lấy thông tin user từ token
-        User user = extractUserFromAuth(authHeader);
-        // Lấy danh sách tin nhắn từ request
-        List<ChatMessageDTO> messages = request.getMessages();
-        // Gửi danh sách tin nhắn đến AI service và nhận phản hồi
-        String reply = chatAIService.processMessages(sessionId, messages, user);
-        // Trả về phản hồi từ AI dưới dạng chuỗi
-        return ResponseEntity.ok(reply);
+        return ResponseEntity.ok(aiResponse);
     }
 
-    // Endpoint lấy tất cả tin nhắn của một session
+    // ✅ Endpoint /batch ĐÃ BỊ XÓA
+    // @PostMapping("/batch")
+    // public ResponseEntity<String> chat(...) { ... }
+
+    // Endpoint lấy tất cả tin nhắn của một session (Giữ nguyên)
     @GetMapping
     public ResponseEntity<List<ChatMessage>> getMessages(
             @PathVariable("sessionId") Long sessionId, // Lấy sessionId từ đường dẫn
@@ -90,7 +74,7 @@ public class ChatMessageController {
         return ResponseEntity.ok(chatMessageService.getMessagesForSession(sessionId, user));
     }
 
-    // Phương thức helper để xác thực và trích xuất thông tin user từ token
+    // Phương thức helper để xác thực và trích xuất thông tin user từ token (Giữ nguyên)
     private User extractUserFromAuth(String authHeader) {
         // Kiểm tra header Authorization có hợp lệ không
         if (authHeader == null || !authHeader.startsWith("Bearer ")) {
