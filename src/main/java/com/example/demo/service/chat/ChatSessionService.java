@@ -15,7 +15,7 @@ import com.example.demo.repository.chat.MessageEmbeddingRepository;
 import com.example.demo.repository.chat.TextChunkRepository;
 import com.example.demo.repository.chat.ConversationStateRepository.ConversationStateRepository;
 import com.example.demo.repository.chat.EmotionContextRepository.EmotionContextRepository;
-import com.example.demo.repository.chat.memory.MemorySummaryLogRepo;
+//import com.example.demo.repository.chat.memory.MemorySummaryLogRepo;
 
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
@@ -25,7 +25,7 @@ import lombok.RequiredArgsConstructor;
 public class ChatSessionService {
 
     private final ChatSessionRepository chatSessionRepo;
-    private final MemorySummaryLogRepo memorySummaryLogRepo;
+    //private final MemorySummaryLogRepo memorySummaryLogRepo;
     private final ConversationStateRepository conversationStateRepo; // ✅ THÊM
     private final EmotionContextRepository emotionContextRepo; // ✅ THÊM
     private final TextChunkRepository chunkRepository;
@@ -89,7 +89,7 @@ public class ChatSessionService {
         }
 
         // 1. Xóa memory summary logs
-        memorySummaryLogRepo.deleteAll(memorySummaryLogRepo.findBySession(session));
+        //memorySummaryLogRepo.deleteAll(memorySummaryLogRepo.findBySession(session));
 
         // 2. Xóa conversation states và emotion contexts
         conversationStateRepo.deleteByChatSessionId(sessionId);

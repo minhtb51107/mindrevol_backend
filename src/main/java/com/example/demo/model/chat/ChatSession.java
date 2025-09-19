@@ -45,13 +45,13 @@ public class ChatSession {
     @JsonIgnore
     private List<ChatMessage> messages = new ArrayList<>();
 
-    @OneToMany(mappedBy = "chatSession", cascade = CascadeType.ALL, orphanRemoval = true)
-    @JsonIgnore
-    private List<MemorySummary> memorySummaries = new ArrayList<>();
+//    @OneToMany(mappedBy = "chatSession", cascade = CascadeType.ALL, orphanRemoval = true)
+//    @JsonIgnore
+//    private List<MemorySummary> memorySummaries = new ArrayList<>();
     
-    @OneToMany(mappedBy = "session", cascade = CascadeType.ALL, orphanRemoval = true)
-    @JsonIgnore
-    private List<MemorySummaryLog> memorySummaryLogs = new ArrayList<>();
+//    @OneToMany(mappedBy = "session", cascade = CascadeType.ALL, orphanRemoval = true)
+//    @JsonIgnore
+//    private List<MemorySummaryLog> memorySummaryLogs = new ArrayList<>();
 
     // ✅ THÊM 2 COLLECTIONS QUAN TRỌNG NÀY
     @OneToMany(mappedBy = "chatSession", cascade = CascadeType.ALL, orphanRemoval = true)

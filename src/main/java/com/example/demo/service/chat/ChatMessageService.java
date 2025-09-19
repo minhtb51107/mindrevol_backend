@@ -15,7 +15,7 @@ import com.example.demo.model.chat.ChatMessage;
 import com.example.demo.model.chat.ChatSession;
 import com.example.demo.repository.chat.ChatMessageRepository;
 import com.example.demo.repository.chat.ChatSessionRepository;
-import com.example.demo.service.chat.memory.CachedEmbeddingService;
+//import com.example.demo.service.chat.memory.CachedEmbeddingService;
 import com.example.demo.service.chat.util.EmbeddingService;
 //import com.example.demo.service.chat.vector.VectorStoreService;
 
@@ -27,7 +27,7 @@ import lombok.extern.slf4j.Slf4j;
 @RequiredArgsConstructor
 public class ChatMessageService {
 
-    private final CachedEmbeddingService cachedEmbeddingService; // Thêm service cache
+    //private final CachedEmbeddingService cachedEmbeddingService; // Thêm service cache
     //private final VectorStoreService vectorStoreService; // Thêm dependency
     /**
      * Kiểm tra chuyển chủ đề giữa hai message cuối cùng bằng embedding
