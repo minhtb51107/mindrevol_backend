@@ -5,16 +5,21 @@ import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import jakarta.persistence.Query;
 import lombok.RequiredArgsConstructor;
+
+import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 @Repository
 @RequiredArgsConstructor
 public class KnowledgeRepository {
-
+	
+	private final NamedParameterJdbcTemplate namedParameterJdbcTemplate;
     // Inject trình quản lý của JPA
     @PersistenceContext
     private final EntityManager em;
@@ -62,5 +67,62 @@ public class KnowledgeRepository {
 
         // Trả về số lượng mẩu (chunks) đã bị xóa
         return query.executeUpdate();
+    }
+    
+    /**
+     * ✅ HÀM MỚI: Tìm tất cả các sessionId duy nhất đang tồn tại trong vector store
+     * cho các file tạm thời. Dùng cho cleanup task.
+     * @return Danh sách các sessionId.
+     */
+    public List<Long> findDistinctSessionIdsForTempFiles() {
+        String sql = "SELECT DISTINCT(metadata ->> 'sessionId')::bigint FROM langchain4j_embedding " +
+                     "WHERE metadata ->> 'docType' = :docType AND metadata ->> 'sessionId' IS NOT NULL";
+        
+        Map<String, String> params = new HashMap<>();
+        params.put("docType", "temp_file");
+
+        return namedParameterJdbcTemplate.queryForList(sql, params, Long.class);
+    }
+
+    /**
+     * Phiên bản có cả userId, dùng khi người dùng chủ động xóa session.
+     */
+    public int deleteTemporaryDocumentsBySession(Long sessionId, Long userId) {
+        String sql = "DELETE FROM langchain4j_embedding WHERE metadata ->> 'docType' = :docType " +
+                     "AND metadata ->> 'sessionId' = :sessionId " +
+                     "AND metadata ->> 'userId' = :userId";
+        
+        Map<String, Object> params = new HashMap<>();
+        params.put("docType", "temp_file");
+        params.put("sessionId", sessionId.toString());
+        params.put("userId", userId.toString());
+
+        return namedParameterJdbcTemplate.update(sql, params);
+    }
+    
+    /**
+     * ✅ HÀM MỚI (Overloaded): Xóa các document tạm thời của một session mà không cần userId.
+     * Dùng cho tác vụ dọn dẹp nền (cleanup task) khi không có thông tin user,
+     * vì session tương ứng đã bị xóa khỏi CSDL chính.
+     *
+     * @param sessionId ID của phiên chat mồ côi cần dọn dẹp.
+     * @return Số lượng chunks (mẩu tin) đã bị xóa.
+     */
+    public int deleteTemporaryDocumentsBySession(Long sessionId) {
+        // Câu lệnh SQL này tìm và xóa các bản ghi trong bảng langchain4j_embedding
+        // dựa trên hai điều kiện trong metadata:
+        // 1. 'docType' phải là 'temp_file'
+        // 2. 'sessionId' phải khớp với ID của session mồ côi được cung cấp
+        String sql = "DELETE FROM langchain4j_embedding WHERE metadata ->> 'docType' = :docType " +
+                     "AND metadata ->> 'sessionId' = :sessionId";
+        
+        // Chúng ta sử dụng Map để truyền tham số vào câu lệnh SQL một cách an toàn,
+        // tránh các lỗi SQL Injection.
+        Map<String, Object> params = new HashMap<>();
+        params.put("docType", "temp_file");
+        params.put("sessionId", sessionId.toString());
+
+        // Thực thi câu lệnh DELETE và trả về số dòng (chunks) đã bị ảnh hưởng (bị xóa).
+        return namedParameterJdbcTemplate.update(sql, params);
     }
 }

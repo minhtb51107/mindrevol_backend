@@ -166,6 +166,15 @@ public class DocumentIngestionService {
         }
     }
 
+    /**
+     * ✅ HÀM MỚI: Xóa tất cả các file tạm thời của một phiên chat cụ thể.
+     */
+    public int deleteTemporaryFilesForSession(Long sessionId, User user) {
+        log.info("Yêu cầu xóa các file tạm thời của session {} cho user {}", sessionId, user.getEmail());
+        int deletedCount = knowledgeRepository.deleteTemporaryDocumentsBySession(sessionId, user.getId());
+        log.info("Đã xóa {} mẩu tin (chunks) của các file tạm thời trong session {}", deletedCount, sessionId);
+        return deletedCount;
+    }
 
     // Helper để chuyển MultipartFile sang File (bị lặp, có thể xóa nếu FileProcessingService được inject)
     private File convertMultiPartToFile(MultipartFile file) throws IOException {

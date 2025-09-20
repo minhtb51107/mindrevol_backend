@@ -16,6 +16,7 @@ import com.example.demo.repository.chat.ChatSessionRepository;
 import com.example.demo.repository.chat.ConversationStateRepository.ConversationStateRepository;
 import com.example.demo.repository.chat.EmotionContextRepository.EmotionContextRepository;
 //import com.example.demo.repository.chat.memory.MemorySummaryLogRepo;
+import com.example.demo.service.document.DocumentIngestionService;
 
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
@@ -31,6 +32,7 @@ public class ChatSessionService {
 //    private final TextChunkRepository chunkRepository;
 //    private final MessageEmbeddingRepository embeddingRepository;
     private final ChatMessageRepository chatMessageRepository;
+    private final DocumentIngestionService documentIngestionService;
 
     public ChatSession createSession(User user, String title) {
         ChatSession session = ChatSession.builder()
@@ -87,6 +89,9 @@ public class ChatSessionService {
         if (!session.getUser().getId().equals(user.getId())) {
             throw new AccessDeniedException("Không có quyền xóa session này");
         }
+  
+        // 2. ✅ GỌI LOGIC DỌN DẸP: Xóa các file tạm thời trong vector store
+        documentIngestionService.deleteTemporaryFilesForSession(sessionId, user);
 
         // 1. Xóa memory summary logs
         //memorySummaryLogRepo.deleteAll(memorySummaryLogRepo.findBySession(session));
