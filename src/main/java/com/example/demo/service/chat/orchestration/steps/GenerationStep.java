@@ -6,8 +6,10 @@ import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.SystemMessage;
 import dev.langchain4j.data.message.UserMessage;
+import dev.langchain4j.data.segment.TextSegment;
 import dev.langchain4j.model.chat.ChatLanguageModel;
 import dev.langchain4j.model.output.Response;
+import dev.langchain4j.store.embedding.EmbeddingMatch;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -28,17 +30,26 @@ public class GenerationStep implements RagStep {
         Map<String, Object> userPrefs = userPreferenceService.getUserPreferencesForPrompt(context.getUser().getId());
         context.setUserPreferences(userPrefs);
 
-        // 2. Lấy bối cảnh RAG (sẽ là rỗng nếu là CHITCHAT)
+        // 2. Lấy bối cảnh RAG và file context từ các matches đã được truy xuất
         String ragContext = context.getRagContextString() != null ? context.getRagContextString() : "";
 
-        // ✅ LẤY FILE CONTEXT
-        String fileContext = context.getFileContext(); 
+        // ✅ LOGIC MỚI: Lấy ngữ cảnh file từ các matches đã được truy xuất
+        String fileContext = "";
+        if (context.getRetrievedMatches() != null) {
+            StringBuilder fileContextBuilder = new StringBuilder();
+            for (EmbeddingMatch<TextSegment> match : context.getRetrievedMatches()) {
+                if ("temp_file".equals(match.embedded().metadata().get("docType"))) {
+                    fileContextBuilder.append(match.embedded().text()).append("\n");
+                }
+            }
+            fileContext = fileContextBuilder.toString().trim();
+        }
 
         // 3. Build prompt
         List<ChatMessage> finalLcMessages = buildFinalLc4jMessages(
                 context.getChatMemory().messages(),
                 ragContext,
-                fileContext, // ✅ TRUYỀN VÀO
+                fileContext,
                 userPrefs,
                 context.getInitialQuery()
         );
@@ -59,7 +70,7 @@ public class GenerationStep implements RagStep {
     private List<ChatMessage> buildFinalLc4jMessages(
             List<ChatMessage> history,
             String ragContext,
-            String fileContext, // ✅ THÊM THAM SỐ MỚI
+            String fileContext,
             Map<String, Object> userPrefsMap,
             String currentQuery) {
 
@@ -75,7 +86,7 @@ public class GenerationStep implements RagStep {
         }
 
         // ✅ LOGIC MỚI: ƯU TIÊN FILE CONTEXT
-     // LOGIC MỚI: ƯU TIÊN FILE CONTEXT
+        // LOGIC MỚI: ƯU TIÊN FILE CONTEXT
         if (fileContext != null && !fileContext.isBlank()) {
             sb.append("\n--- NGỮ CẢNH TỪ FILE ĐÍNH KÈM (ƯU TIÊN CAO) ---\n");
             sb.append(fileContext).append("\n");
