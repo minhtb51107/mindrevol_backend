@@ -23,7 +23,8 @@ public class RagContext {
     private final User user;
     private final ChatSession session;
     private final ChatMemory chatMemory;
-    private final String fileContext; // ✅ <--- THÊM DÒNG NÀY VÀO
+    // 🔥 ĐÃ XÓA: private final String fileContext;
+    private final String tempFileId; // ✅ <--- THAY THẾ BẰNG DÒNG NÀY
 
     // --- Dữ liệu được xử lý qua các bước ---
 

@@ -1,12 +1,13 @@
 package com.example.demo.service.chat;
 
-import java.io.File; // ✅ THÊM MỚI
+import java.io.File; 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.UUID; // ✅ THÊM MỚI
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -15,7 +16,7 @@ import java.util.stream.Collectors;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
-import org.springframework.web.multipart.MultipartFile; // ✅ THÊM MỚI
+import org.springframework.web.multipart.MultipartFile; 
 
 import com.example.demo.dto.chat.ChatMessageDTO;
 import com.example.demo.model.auth.User;
@@ -42,7 +43,7 @@ import com.example.demo.service.chat.state.ConversationStateService;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 
-import dev.langchain4j.data.document.Document; // ✅ THÊM MỚI
+import dev.langchain4j.data.document.Document; 
 import dev.langchain4j.data.document.Metadata;
 import dev.langchain4j.data.embedding.Embedding;
 import dev.langchain4j.data.message.AiMessage;
@@ -59,7 +60,8 @@ import dev.langchain4j.rag.query.Query;
 import dev.langchain4j.store.embedding.EmbeddingStore;
 
 import com.example.demo.service.chat.fallback.FallbackService;
-import com.example.demo.service.document.FileProcessingService; // ✅ THÊM MỚI
+import com.example.demo.service.document.FileProcessingService; 
+import com.example.demo.service.document.DocumentIngestionService; // ✅ THÊM MỚI
 //import com.example.demo.service.chat.integration.OpenAIService;
 //import com.example.demo.service.chat.integration.SpringAIChatService;
 // import com.example.demo.service.chat.memory.HierarchicalMemoryManager; // 🔥 ĐÃ XÓA
@@ -91,55 +93,35 @@ import lombok.extern.slf4j.Slf4j;
 @Service
 @RequiredArgsConstructor
 public class ChatAIService {
-    // private final RedisChatMemoryService redisChatMemoryService; // 🔥 ĐÃ XÓA
+    
     private final ChatSessionRepository sessionRepo;
     private final ChatMessageService messageService;
-    // private final MemorySummaryManager memoryManager; // 🔥 ĐÃ XÓA
-    // private final PromptBuilder promptBuilder; // 🔥 ĐÃ XÓA
-    //private final OpenAIService openAIService;
-    //private final SpringAIChatService springAIChatService;
-    //private final SpringAIEmbeddingService embeddingService;
-    //private final EmbeddingService embeddingService;
-    //private final VectorStoreService vectorStoreService;
-    
-    // ✅ CÁC SERVICES MỚI
     private final EmotionAnalysisService emotionAnalysisService;
-    //private final UserPreferenceService userPreferenceService;
     private final ConversationStateService conversationStateService;
     private final FallbackService fallbackService;
     
     // ✅ REPOSITORIES
     private final EmotionContextRepository emotionContextRepository;
     private final ConversationStateRepository conversationStateRepository;
-    //private final UserPreferenceRepository userPreferenceRepository;
     
-    //private final TokenCounterService tokenCounterService;
-    
-    // private final HierarchicalMemoryManager hierarchicalMemoryManager; // 🔥 ĐÃ XÓA
-    
-    // private final MemorySummaryRepo summaryRepo; // 🔥 ĐÃ XÓA
-    
-    private final LangChainChatMemoryService langChainChatMemoryService; // ✅ ĐÃ HỢP NHẤT
-    //private final ConversationSummaryService conversationSummaryService;
+    private final LangChainChatMemoryService langChainChatMemoryService; 
     private final ChatLanguageModel chatLanguageModel;
     private final EmbeddingStore<TextSegment> embeddingStore;
     private final EmbeddingModel embeddingModel;
     
-    //private final RerankingService rerankingService; 
-    
+    // ✅ ORCHESTRATION STEPS
     private final RetrievalStep retrievalStep;
     private final RerankingStep rerankingStep;
     private final GenerationStep generationStep;
     private final MemoryQueryStep memoryQueryStep;
     
     // ✅ THÊM SERVICE MỚI
-    private final FileProcessingService fileProcessingService;
-    
-    // private final LangChainChatMemoryService langChain4jMemoryService; // 🔥 ĐÃ XÓA (Bị trùng)
+    private final FileProcessingService fileProcessingService; // (Đã có)
+    private final DocumentIngestionService documentIngestionService; // ✅ THÊM MỚI
 
     // ✅ PHƯƠNG THỨC MỚI ĐỂ XỬ LÝ FILE UPLOAD
     public String processMessages(Long sessionId, String prompt, MultipartFile file, User user) {
-        File tempFile = null;
+        // File tempFile = null; // 🔥 BỊ XÓA - DocumentIngestionService sẽ quản lý file tạm
         try {
             ChatSession session = sessionRepo.findById(sessionId)
                     .orElseThrow(() -> new IllegalArgumentException("Session không tồn tại"));
@@ -152,22 +134,26 @@ public class ChatAIService {
             }
 
             // ✅ LOGIC XỬ LÝ FILE ĐÍNH KÈM (MỚI)
-            String fileContext = null;
+            // String fileContext = null; // 🔥 BỊ XÓA
+            String tempFileId = null; // ✅ THÊM MỚI
+            
             if (file != null && !file.isEmpty()) {
                 log.debug("Processing attached file: {}", file.getOriginalFilename());
-                tempFile = fileProcessingService.convertMultiPartToFile(file);
-                Document document = fileProcessingService.loadDocument(tempFile);
-                fileContext = document.text(); // Lấy TOÀN BỘ text của file
+                // tempFile = fileProcessingService.convertMultiPartToFile(file); // 🔥 BỊ XÓA
+                // Document document = fileProcessingService.loadDocument(tempFile); // 🔥 BỊ XÓA
+                // fileContext = document.text(); // 🔥 BỊ XÓA
+
+                // ✅ LOGIC MỚI: Ingest file vào Vector Store với metadata tạm thời
+                tempFileId = UUID.randomUUID().toString(); // Tạo ID duy nhất cho file này
+                documentIngestionService.ingestTemporaryFile(file, user, session.getId(), tempFileId);
+                log.debug("File {} ingested with tempFileId: {}", file.getOriginalFilename(), tempFileId);
             }
 
             runContextAnalysisAsync(session, user, prompt);
 
-            // === 🔥 BẮT ĐẦU ORCHESTRATION MỚI ===
+            // === BẮT ĐẦU ORCHESTRATION MỚI ===
             RagContext.QueryIntent intent = classifyQueryIntent(prompt);
             log.debug("Query intent classified as: {}", intent);
-            
-//            RagContext.QueryIntent intent = RagContext.QueryIntent.RAG_QUERY;
-//            log.debug("Query intent FORCED to: {}", intent);
 
             RagContext context = RagContext.builder()
                     .initialQuery(prompt)
@@ -175,7 +161,8 @@ public class ChatAIService {
                     .session(session)
                     .chatMemory(chatMemory)
                     .intent(intent)
-                    .fileContext(fileContext) // ✅ TRUYỀN CONTEXT CỦA FILE VÀO
+                    // .fileContext(fileContext) // 🔥 BỊ XÓA
+                    .tempFileId(tempFileId) // ✅ TRUYỀN ID FILE TẠM VÀO
                     .build();
 
             // 3. Chọn Pipeline (Strategy Pattern) và thực thi
@@ -209,11 +196,13 @@ public class ChatAIService {
 
         } catch (Exception e) {
             log.error("Lỗi xử lý processMessages: {}", e.getMessage(), e);
+            // Cân nhắc: Thêm logic xóa tempFileId khỏi vector store nếu ingest lỗi
             return fallbackService.getEmergencyResponse();
-        } finally {
-            // ✅ Dọn dẹp file tạm (nếu có)
-            fileProcessingService.deleteTempFile(tempFile);
-        }
+        } 
+        // 🔥 KHỐI FINALLY BỊ XÓA
+        // finally {
+        //     fileProcessingService.deleteTempFile(tempFile);
+        // }
     }
  
     // ... (Các phương thức khác giữ nguyên) ...
@@ -248,8 +237,8 @@ public class ChatAIService {
          "messageId", message.getId().toString(),
          "sessionId", session.getId().toString(),
          "senderType", message.getSender(),
-         "messageTimestamp", message.getTimestamp().toString() // Quan trọng cho hybrid rerank
-         // "detectedTopic", "..." // (Bạn có thể thêm logic phát hiện topic ở đây)
+         "messageTimestamp", message.getTimestamp().toString(), // Quan trọng cho hybrid rerank
+         "docType", "message" // ✅ THÊM MỚI: Phân biệt rõ ràng với 'knowledge' và 'temp_file'
      ));
      
      return TextSegment.from(message.getContent(), metadata);
@@ -264,125 +253,32 @@ public class ChatAIService {
                 return;
             }
             
-            // Chuyển đổi từ model DB (ChatMessage) sang model của LangChain4j 
-            // (dev.langchain4j.data.message.ChatMessage)
-            // Lưu ý: Chúng ta phải thêm chúng theo đúng thứ tự (cũ đến mới)
             for (ChatMessage dbMsg : recentDbMessages) {
                 if ("user".equalsIgnoreCase(dbMsg.getSender())) {
                     chatMemory.add(UserMessage.from(dbMsg.getContent()));
                 } else if ("assistant".equalsIgnoreCase(dbMsg.getSender())) {
                     chatMemory.add(AiMessage.from(dbMsg.getContent()));
                 }
-                // (Chúng ta có thể bỏ qua các tin nhắn "system" trong lịch sử DB 
-                // vì system prompt được xây dựng riêng)
             }
         } catch (Exception e) {
             log.warn("Failed to hydrate chat memory from DB for session {}: {}", sessionId, e.getMessage());
         }
     }
 
- // Trong file: demo-2/src/main/java/com/example/demo/service/chat/ChatAIService.java
-
-    /**
-     * ✅ THAY ĐỔI SIGNATURE: Loại bỏ 'longTermContext'
-     */
-//    private List<dev.langchain4j.data.message.ChatMessage> buildFinalLc4jMessages(
-//            List<dev.langchain4j.data.message.ChatMessage> history, // history này đã chứa tóm tắt
-//            String ragContext, 
-//            Map<String, Object> userPrefsMap, 
-//            String currentQuery) {
-//
-//        List<dev.langchain4j.data.message.ChatMessage> messages = new ArrayList<>();
-//
-//        StringBuilder sb = new StringBuilder();
-//        sb.append("Bạn là trợ lý AI hữu ích.\n");
-//
-//        if (userPrefsMap != null && !userPrefsMap.isEmpty()) {
-//            sb.append("\n--- SỞ THÍCH CỦA NGƯỜI DÙNG ---\n");
-//            userPrefsMap.forEach((key, value) -> {
-//                sb.append(String.format("%s: %s\n", key, value != null ? value.toString() : "N/A"));
-//            });
-//        }
-//
-//        // 🔥 ĐÃ XÓA KHỐI LOGIC 'longTermContext' VÌ NÓ ĐÃ CÓ TRONG 'history'
-//        // if (longTermContext != null && !longTermContext.isBlank()) { ... }
-//
-//        sb.append("\n--- BỐI CẢNH NGẮN HẠN (TỪ RAG) ---\n");
-//        sb.append(ragContext.isEmpty() ? "Không có" : ragContext).append("\n");
-//        sb.append("\n--- HẾT BỐI CẢNH ---\n\nHãy trả lời câu hỏi hiện tại.");
-//
-//        messages.add(SystemMessage.from(sb.toString()));
-//
-//        // 'history' đã bao gồm (Tóm tắt + tin nhắn gần đây)
-//        messages.addAll(history); 
-//        
-//        // Chỉ thêm câu hỏi hiện tại (nó chưa có trong history)
-//        // LƯU Ý: Đảm bảo 'history' không bao gồm currentQuery
-//        // (Trong logic ở trên, chúng ta add(UserMessage) SAU khi build prompt, nên điều này là ĐÚNG)
-//        
-//        // messages.add(UserMessage.from(currentQuery)); // BỊ TRÙNG LẶP NẾU history ĐÃ BAO GỒM NÓ
-//        
-//        // KIỂM TRA LẠI:
-//        // 1. chatMemory.messages() được gọi -> trả về [Summary, msg1, msg2]
-//        // 2. buildFinalLc4jMessages(history, ...) được gọi
-//        // 3. chatMemory.add(UserMessage.from(prompt)) được gọi
-//        
-//        // -> Vì vậy, 'history' chưa chứa 'currentQuery'. Chúng ta cần thêm nó.
-//        // NHƯNG, trong code cũ của bạn, 'currentQuery' LÀ tin nhắn cuối cùng trong 'history'.
-//        // Hãy kiểm tra lại `processMessages`:
-//        
-//        // 1. chatMemory.add(UserMessage.from(prompt)); // <- Bạn thêm nó VÀO BỘ NHỚ
-//        // 2. Response<AiMessage> response = chatLanguageModel.generate(lcMessages); // <- Bạn gọi generate
-//        // 3. chatMemory.add(AiMessage.from(reply)); // <- Bạn thêm phản hồi
-//        
-//        // A-ha! Trong code của bạn, `buildFinalLc4jMessages` được gọi TRƯỚC khi `chatMemory.add(UserMessage.from(prompt))`.
-//        
-//        // VẬY THÌ: 
-//        // 1. `history = chatMemory.messages()` (Chưa chứa prompt hiện tại)
-//        // 2. `lcMessages = buildFinalLc4jMessages(history, ...)`
-//        // 3. Phương thức `buildFinalLc4jMessages` CẦN thêm `currentQuery`.
-//        
-//        // HÃY XEM LẠI buildFinalLc4jMessages gốc của bạn:
-//        /*
-//        private List<dev.langchain4j.data.message.ChatMessage> buildFinalLc4jMessages(
-//            ...
-//            String currentQuery) {
-//            ...
-//            messages.addAll(history); 
-//            messages.add(UserMessage.from(currentQuery)); // <- NÓ ĐÂY RỒI
-//            return messages;
-//        }
-//        */
-//       
-//       // -> Vậy code của tôi ở trên LÀ ĐÚNG. 
-//       // history không chứa currentQuery, và chúng ta thêm nó vào cuối.
-//
-//        messages.addAll(history); 
-//        messages.add(UserMessage.from(currentQuery));
-//
-//        return messages;
-//    }
-    
-    // ... (Phần còn lại của ChatAIService.java giữ nguyên) ...
-
     @Async 
     protected void runContextAnalysisAsync(ChatSession session, User user, String prompt) {
         try {
-            // 1. Phân tích cảm xúc (Sửa lỗi Constructor)
             EmotionContext emotionContext = emotionContextRepository.findByChatSession_Id(session.getId())
                     .orElseGet(() -> {
                         EmotionContext ctx = new EmotionContext(); // Tạo trống
                         ctx.setChatSession(session); // Set thủ công
                         ctx.setUser(user);         // Set thủ công
                         return ctx;
-                    }); // ✅ ĐÃ SỬA
+                    }); 
             emotionAnalysisService.analyzeEmotion(prompt, emotionContext);
             emotionContextRepository.save(emotionContext);
 
-            // 2. Cập nhật trạng thái hội thoại
             ConversationState state = conversationStateService.getOrCreateState(session.getId());
-            // ⛔ XÓA DÒNG LỖI: conversationStateService.updateConversationState(state, prompt); 
-            // (Phương thức này không tồn tại trong service của bạn)
             conversationStateRepository.save(state);
 
             log.debug("Đã cập nhật Context (Emotion, State) bất đồng bộ cho session {}", session.getId());
@@ -391,101 +287,11 @@ public class ChatAIService {
         }
     }
     
-    // 🔥 THÊM PHƯƠNG THỨC XỬ LÝ CÂU HỎI MEMORY
-//    private String handleMemoryQuestion(ChatMemory chatMemory, String currentPrompt) {
-//        List<dev.langchain4j.data.message.ChatMessage> messages = chatMemory.messages();
-//        
-//        if (messages.isEmpty()) {
-//            return "Chúng ta chưa có cuộc trò chuyện nào trước đó.";
-//        }
-//        
-//        // Lọc chỉ lấy tin nhắn user (bỏ qua system messages và AI responses)
-//        List<String> userMessages = messages.stream()
-//            .filter(msg -> msg instanceof UserMessage)
-//            .map(dev.langchain4j.data.message.ChatMessage::text)
-//            .filter(msg -> !msg.equals(currentPrompt)) // Bỏ qua câu hỏi hiện tại
-//            .collect(Collectors.toList());
-//        
-//        if (userMessages.isEmpty()) {
-//            return "Tôi chưa nhận được tin nhắn nào từ bạn trước đây.";
-//        }
-//        
-//        // Lấy tin nhắn user gần nhất
-//        String lastUserMessage = userMessages.get(userMessages.size() - 1);
-//        
-//        // Trả về câu trả lời thông minh hơn
-//        return "Bạn vừa nhắn: \"" + lastUserMessage + "\". " +
-//               "Bạn muốn tôi giải thích thêm hay có câu hỏi gì về điều này không?";
-//    }
-
-    // 🔥 CẬP NHẬT PHƯƠNG THỨC NHẬN DIỆN CÂU HỎI MEMORY
     private boolean isMemoryRelatedQuestion(String prompt) {
-        String lowerPrompt = prompt.toLowerCase();
-        return lowerPrompt.contains("vừa nhắn") || 
-               lowerPrompt.contains("vừa nói") ||
-               lowerPrompt.contains("trước đó") ||
-               lowerPrompt.contains("nhắc lại") ||
-               lowerPrompt.contains("nói gì") ||
-               lowerPrompt.matches(".*tôi.*vừa.*nói.*gì.*") ||
-               lowerPrompt.matches(".*tôi.*vừa.*nhắn.*gì.*") ||
-               lowerPrompt.contains("what did i say") ||
-               lowerPrompt.contains("what was my last message");
+        // (Logic này đã được chuyển sang classifyQueryIntent)
+        return false; // Sẽ được xử lý bởi classification
     }
 
-//    private List<Map<String, String>> convertToPromptFormat(List<dev.langchain4j.data.message.ChatMessage> messages) {
-//        List<Map<String, String>> prompt = new ArrayList<>();
-//        
-//        prompt.add(Map.of(
-//            "role", "system",
-//            "content", "Bạn là trợ lý AI thông minh. Hãy trả lời tự nhiên và hữu ích."
-//        ));
-//        
-//        for (dev.langchain4j.data.message.ChatMessage message : messages) {
-//            String role = message instanceof UserMessage ? "user" : 
-//                         message instanceof AiMessage ? "assistant" : "system";
-//            
-//            prompt.add(Map.of(
-//                "role", role,
-//                "content", message.text()
-//            ));
-//        }
-//        
-//        return prompt;
-//    }
-    
-
-    
-//    private String buildSystemPrompt(ChatSession session, User user) {
-//        // Giữ lại logic system prompt hiện tại nhưng đơn giản hóa
-//        return "Bạn là trợ lý AI thông minh. Hãy trả lời tự nhiên và hữu ích.";
-//    }
-//    
-//    private ChatMessage convertToChatMessage(dev.langchain4j.data.message.ChatMessage lcMessage, ChatSession session) {
-//        ChatMessage message = new ChatMessage();
-//        message.setChatSession(session);
-//        
-//        if (lcMessage instanceof UserMessage) {
-//            message.setSender("user");
-//            message.setContent(lcMessage.text());
-//        } else if (lcMessage instanceof AiMessage) {
-//            message.setSender("assistant");
-//            message.setContent(lcMessage.text());
-//        } else if (lcMessage instanceof SystemMessage) {
-//            message.setSender("system");
-//            message.setContent(lcMessage.text());
-//        }
-//        
-//        return message;
-//    }
-    
-//    private enum QueryIntent {
-//        RAG_QUERY,      // Câu hỏi cần tìm kiếm ngữ cảnh
-//        CHITCHAT,       // Chào hỏi xã giao
-//        MEMORY_QUERY    // ✅ THÊM TRẠNG THÁI MỚI: Câu hỏi về bộ nhớ
-//    }
-
-    // --- LOGIC PHÂN LOẠI VẪN GIỮ LẠI Ở "NHẠC TRƯỞNG" ---
- // ✅ PROMPT GỢI Ý ĐỂ PHÂN LOẠI TỐT HƠN
     private RagContext.QueryIntent classifyQueryIntent(String query) {
         try {
             String systemPrompt = """
@@ -494,7 +300,7 @@ public class ChatAIService {
 
                 1.  RAG_QUERY:
                     - Người dùng đang hỏi về thông tin cụ thể, sự kiện, dữ liệu, hoặc kiến thức.
-                    - Người dùng đang hỏi về nội dung của các tệp tin (ví dụ: "file X nói về cái gì?", "tóm tắt file Y").
+                    - Người dùng đang hỏi về nội dung của các tệp tin (ví dụ: "file X nói về cái gì?", "tóm tắt file Y", "dựa vào file tôi vừa gửi...").
                     - Người dùng hỏi về các chủ đề chuyên môn (ví dụ: "giải thích code...", "lỗi...").
                     - Bất kỳ câu hỏi nào cần tra cứu kiến thức để trả lời.
 
@@ -523,61 +329,4 @@ public class ChatAIService {
             return RagContext.QueryIntent.RAG_QUERY;
         }
     }
-    
-// private final Cache<String, Boolean> technicalQueryCache = Caffeine.newBuilder()
-//     .maximumSize(1000)
-//     .expireAfterWrite(1, TimeUnit.HOURS)
-//     .build();
-//
-// private boolean isTechnicalQuery(String query) {
-//     if (query == null || query.isBlank()) {
-//         return false;
-//     }
-//     return technicalQueryCache.get(query, this::analyzeTechnicalQuery);
-// }
-//
-// private boolean analyzeTechnicalQuery(String query) {
-//     String lowerQuery = query.toLowerCase();
-//     // (Đây là logic phân tích kỹ thuật của bạn, bạn có thể copy lại
-//     // logic đầy đủ mà bạn đã viết trước đây)
-//     String[] technicalKeywords = {"java", "code", "api", "error", "exception", "debug", "sql"};
-//     for (String keyword : technicalKeywords) {
-//         if (lowerQuery.contains(keyword)) {
-//             return true;
-//         }
-//     }
-//     return false;
-// }
- 
-    // 🔥 CÁC PHƯƠNG THỨC LIÊN QUAN ĐẾN HỆ THỐNG CUSTOM CŨ (ĐÃ BỊ COMMENT OUT) SẼ BỊ XÓA HOÀN TOÀN
-    
-    // private boolean isComplexQuery(String query) { ... }
-    // private Map<String, Double> getHybridWeightsBasedOnQueryType(String query) { ... }
-    // private boolean analyzeTechnicalQuery(String query) { ... } // (Đã giữ lại 1 phiên bản)
-    // private boolean containsTechnicalPatterns(String query) { ... }
-    // private String detectTopicForQuery(String query) { ... }
-    // private String detectTopicWithAI(String content) { ... }
-    // private boolean isUserQuery(String query) { ... }
-    // private SearchStrategy classifyQuery(String query) { ... }
-    // private boolean containsTechnicalKeywords(String query) { ... }
-    // private boolean isComplexNaturalLanguage(String query) { ... }
-    // private enum SearchStrategy { ... }
-    // private void logRetrievalPerformance(...) { ... }
-    // private boolean isExplicitRecallQuestion(String prompt) { ... }
-    // private List<ChatMessage> removeDuplicates(...) { ... }
-    // private List<ChatMessage> getFallbackMessages(...) { ... }
-    // private EmotionContext processEmotion(...) { ... }
-    // private ConversationState processConversationState(...) { ... }
-    // private EmotionContext createNewEmotionContext(...) { ... }
-    // private void updateConversationState(...) { ... }
-    // private String detectConversationStage(...) { ... }
-    // private String detectCurrentTopic(...) { ... }
-    // private boolean isFrustratedMessage(String prompt) { ... }
-    // private List<Map<String, String>> buildEnhancedPrompt(...) { ... } // 🔥 ĐÃ XÓA
-    // private String buildRetrievalContext(...) { ... }
-    // private String buildSystemPromptWithContext(...) { ... } // 🔥 ĐÃ XÓA
-    // public List<Map<String, String>> buildPromptWithHierarchicalMemory(...) { ... } // 🔥 ĐÃ XÓA
-    // private void updateSatisfactionScore(...) { ... }
-    // private boolean isRecallQuestion(String prompt) { ... }
-    // private boolean isReferenceIntent(String prompt) { ... }
 }

@@ -51,37 +51,8 @@ public class DocumentIngestionService {
         return deletedCount;
     }
 
-    public void ingestDocument(MultipartFile multipartFile, User user) throws IOException {
-        
-        // DocumentParser parser = new ApacheTikaDocumentParser(); // Xóa
-        File tempFile = null;
-        
-        try {
-            // ✅ SỬ DỤNG SERVICE MỚI
-            tempFile = fileProcessingService.convertMultiPartToFile(multipartFile);
-            Document document = fileProcessingService.loadDocument(tempFile);
-
-            // 3. TRANSFORM STEP
-            document.metadata().add("userId", user.getId().toString());
-            document.metadata().add("docType", "knowledge");
-            document.metadata().add("fileName", multipartFile.getOriginalFilename());
-
-            // 4. CHUNKING/SPLITTING STEP
-            EmbeddingStoreIngestor ingestor = EmbeddingStoreIngestor.builder()
-                    .documentSplitter(DocumentSplitters.recursive(500, 100))
-                    .embeddingModel(embeddingModel)
-                    .embeddingStore(embeddingStore)
-                    .build();
-
-            // 5. EMBED & WRITE STEPS
-            ingestor.ingest(document);
-            log.info("Đã nạp thành công file {} cho user {}", multipartFile.getOriginalFilename(), user.getEmail());
-
-        } finally {
-            // ✅ SỬ DỤNG SERVICE MỚI
-            fileProcessingService.deleteTempFile(tempFile);
-        }
-    }
+    // 🔥 HÀM NÀY BỊ XÓA (đã được thay bằng ingestSingleDocument)
+    // public void ingestDocument(MultipartFile multipartFile, User user) throws IOException { ... }
     
     /**
      * ✅ HÀM MỚI: Nhận một danh sách file và xử lý tuần tự
@@ -103,8 +74,7 @@ public class DocumentIngestionService {
     }
 
     /**
-     * ✅ THAY ĐỔI: Đổi tên hàm cũ (ingestDocument -> ingestSingleDocument)
-     * và làm nó public để có thể gọi từ bên trên (hoặc private nếu bạn thích)
+     * Nạp file vào KHO TRI THỨC LÂU DÀI (docType = 'knowledge')
      */
     public void ingestSingleDocument(MultipartFile multipartFile, User user) throws IOException {
         
@@ -126,17 +96,14 @@ public class DocumentIngestionService {
             );
 
             // 3. Tạo document mới với nội dung đã sửa đổi
-            // Chúng ta giữ lại metadata gốc (nếu có) và thêm vào sau
             Document document = Document.from(newContent, originalDocument.metadata());
             
-            // 4. Thêm metadata của chúng ta
+            // 4. Thêm metadata
             document.metadata().add("userId", user.getId().toString());
-            document.metadata().add("docType", "knowledge"); 
+            document.metadata().add("docType", "knowledge"); // ✅ <--- TRI THỨC LÂU DÀI
             document.metadata().add("fileName", fileName);
 
             // 5. Nạp
-            // Giờ đây, các "mẩu" (chunks) sẽ chứa cả tên file,
-            // làm cho nó có thể tìm kiếm được bằng ngữ nghĩa!
             EmbeddingStoreIngestor ingestor = EmbeddingStoreIngestor.builder()
                     .documentSplitter(DocumentSplitters.recursive(500, 100))
                     .embeddingModel(embeddingModel)
@@ -144,14 +111,63 @@ public class DocumentIngestionService {
                     .build();
             
             ingestor.ingest(document);
-            log.info("Đã nạp thành công file {} cho user {}", multipartFile.getOriginalFilename(), user.getEmail());
+            log.info("Đã nạp thành công file (knowledge) {} cho user {}", multipartFile.getOriginalFilename(), user.getEmail());
 
         } finally {
             fileProcessingService.deleteTempFile(tempFile);
         }
     }
 
-    // Helper để chuyển MultipartFile sang File
+    /**
+     * ✅ HÀM MỚI: Nạp file TẠM THỜI cho RAG (docType = 'temp_file')
+     * Chỉ tồn tại trong phạm vi của cuộc trò chuyện.
+     */
+    public void ingestTemporaryFile(MultipartFile multipartFile, User user, Long sessionId, String tempFileId) throws IOException {
+        
+        File tempFile = null;
+        
+        try {
+        	tempFile = fileProcessingService.convertMultiPartToFile(multipartFile);
+            
+            // 1. Tải document gốc
+            Document originalDocument = fileProcessingService.loadDocument(tempFile);
+            String originalContent = originalDocument.text();
+            String fileName = multipartFile.getOriginalFilename();
+
+            // 2. TẠO NỘI DUNG MỚI: Thêm tên file vào đầu văn bản
+            String newContent = String.format(
+                "Đây là nội dung trích từ file tạm thời có tên: '%s'\n\n%s",
+                fileName,
+                originalContent
+            );
+
+            // 3. Tạo document mới với nội dung đã sửa đổi
+            Document document = Document.from(newContent, originalDocument.metadata());
+            
+            // 4. Thêm metadata TẠM THỜI
+            document.metadata().add("userId", user.getId().toString()); // Vẫn cần để phân quyền
+            document.metadata().add("docType", "temp_file");    // ✅ <--- LOẠI FILE TẠM THỜI
+            document.metadata().add("fileName", fileName);
+            document.metadata().add("sessionId", sessionId.toString()); // ✅ Gắn vào session
+            document.metadata().add("tempFileId", tempFileId); // ✅ Gắn ID file duy nhất
+
+            // 5. Nạp
+            EmbeddingStoreIngestor ingestor = EmbeddingStoreIngestor.builder()
+                    .documentSplitter(DocumentSplitters.recursive(500, 100))
+                    .embeddingModel(embeddingModel)
+                    .embeddingStore(embeddingStore)
+                    .build();
+            
+            ingestor.ingest(document);
+            log.info("Đã nạp thành công file (temporary) {} cho session {}", fileName, sessionId);
+
+        } finally {
+            fileProcessingService.deleteTempFile(tempFile);
+        }
+    }
+
+
+    // Helper để chuyển MultipartFile sang File (bị lặp, có thể xóa nếu FileProcessingService được inject)
     private File convertMultiPartToFile(MultipartFile file) throws IOException {
         File convFile = File.createTempFile(file.getOriginalFilename(), ".tmp");
         try (FileOutputStream fos = new FileOutputStream(convFile);
