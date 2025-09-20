@@ -1,13 +1,13 @@
 package com.example.demo.service.chat;
 
-import java.io.File; 
+import java.io.File;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.UUID; // ✅ THÊM MỚI
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -16,34 +16,27 @@ import java.util.stream.Collectors;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
-import org.springframework.web.multipart.MultipartFile; 
+import org.springframework.web.multipart.MultipartFile;
 
 import com.example.demo.dto.chat.ChatMessageDTO;
 import com.example.demo.model.auth.User;
 import com.example.demo.model.chat.ChatMessage;
 import com.example.demo.model.chat.ChatSession;
 import com.example.demo.model.chat.EmotionContext;
-// import com.example.demo.model.chat.MemorySummary; // 🔥 ĐÃ XÓA
 import com.example.demo.model.chat.ConversationState;
 import com.example.demo.repository.chat.ChatSessionRepository;
 import com.example.demo.repository.chat.ConversationStateRepository.ConversationStateRepository;
 import com.example.demo.repository.chat.EmotionContextRepository.EmotionContextRepository;
 import com.example.demo.repository.chat.UserPreferenceRepository.UserPreferenceRepository;
-// import com.example.demo.repository.chat.memory.MemorySummaryRepo; // 🔥 ĐÃ XÓA
-//import com.example.demo.service.chat.chunking.TokenCounterService;
 import com.example.demo.service.chat.context.ContextCompressionService;
 import com.example.demo.service.chat.emotion.EmotionAnalysisService;
 import com.example.demo.service.chat.preference.UserPreferenceService;
 import com.example.demo.service.chat.reranking.RerankingService;
 import com.example.demo.service.chat.state.ConversationStateService;
-//import com.example.demo.service.chat.util.SpringAIEmbeddingService;
-//import com.example.demo.service.chat.util.EmbeddingService;
-//import com.example.demo.service.chat.util.TokenManagementService;
-//import com.example.demo.service.chat.vector.VectorStoreService;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 
-import dev.langchain4j.data.document.Document; 
+import dev.langchain4j.data.document.Document;
 import dev.langchain4j.data.document.Metadata;
 import dev.langchain4j.data.embedding.Embedding;
 import dev.langchain4j.data.message.AiMessage;
@@ -60,14 +53,8 @@ import dev.langchain4j.rag.query.Query;
 import dev.langchain4j.store.embedding.EmbeddingStore;
 
 import com.example.demo.service.chat.fallback.FallbackService;
-import com.example.demo.service.document.FileProcessingService; 
-import com.example.demo.service.document.DocumentIngestionService; // ✅ THÊM MỚI
-//import com.example.demo.service.chat.integration.OpenAIService;
-//import com.example.demo.service.chat.integration.SpringAIChatService;
-// import com.example.demo.service.chat.memory.HierarchicalMemoryManager; // 🔥 ĐÃ XÓA
-// import com.example.demo.service.chat.memory.MemorySummaryManager; // 🔥 ĐÃ XÓA
-// import com.example.demo.service.chat.memory.PromptBuilder; // 🔥 ĐÃ XÓA
-// import com.example.demo.service.chat.memory.RedisChatMemoryService; // 🔥 ĐÃ XÓA
+import com.example.demo.service.document.FileProcessingService;
+import com.example.demo.service.document.DocumentIngestionService;
 import com.example.demo.service.chat.memory.langchain.ConversationSummaryService;
 import com.example.demo.service.chat.memory.langchain.LangChainChatMemoryService;
 import com.example.demo.service.chat.orchestration.context.RagContext;
@@ -93,65 +80,56 @@ import lombok.extern.slf4j.Slf4j;
 @Service
 @RequiredArgsConstructor
 public class ChatAIService {
-    
+
     private final ChatSessionRepository sessionRepo;
     private final ChatMessageService messageService;
     private final EmotionAnalysisService emotionAnalysisService;
     private final ConversationStateService conversationStateService;
     private final FallbackService fallbackService;
-    
-    // ✅ REPOSITORIES
+
+    // REPOSITORIES
     private final EmotionContextRepository emotionContextRepository;
     private final ConversationStateRepository conversationStateRepository;
-    
-    private final LangChainChatMemoryService langChainChatMemoryService; 
+
+    private final LangChainChatMemoryService langChainChatMemoryService;
     private final ChatLanguageModel chatLanguageModel;
     private final EmbeddingStore<TextSegment> embeddingStore;
     private final EmbeddingModel embeddingModel;
-    
-    // ✅ ORCHESTRATION STEPS
+
+    // ORCHESTRATION STEPS
     private final RetrievalStep retrievalStep;
     private final RerankingStep rerankingStep;
     private final GenerationStep generationStep;
     private final MemoryQueryStep memoryQueryStep;
-    
-    // ✅ THÊM SERVICE MỚI
-    private final FileProcessingService fileProcessingService; // (Đã có)
-    private final DocumentIngestionService documentIngestionService; // ✅ THÊM MỚI
 
-    // ✅ PHƯƠNG THỨC MỚI ĐỂ XỬ LÝ FILE UPLOAD
+    // SERVICES
+    private final FileProcessingService fileProcessingService;
+    private final DocumentIngestionService documentIngestionService;
+
     public String processMessages(Long sessionId, String prompt, MultipartFile file, User user) {
-        // File tempFile = null; // 🔥 BỊ XÓA - DocumentIngestionService sẽ quản lý file tạm
+        String tempFileId = null;
         try {
             ChatSession session = sessionRepo.findById(sessionId)
                     .orElseThrow(() -> new IllegalArgumentException("Session không tồn tại"));
 
             ChatMemory chatMemory = langChainChatMemoryService.getChatMemory(sessionId);
-            
+
             if (chatMemory.messages().isEmpty()) {
-                 log.debug("Chat memory for session {} is empty. Hydrating from database...", sessionId);
-                 hydrateChatMemoryFromDB(chatMemory, sessionId);
+                log.debug("Chat memory for session {} is empty. Hydrating from database...", sessionId);
+                hydrateChatMemoryFromDB(chatMemory, sessionId);
             }
 
-            // ✅ LOGIC XỬ LÝ FILE ĐÍNH KÈM (MỚI)
-            // String fileContext = null; // 🔥 BỊ XÓA
-            String tempFileId = null; // ✅ THÊM MỚI
-            
+            // Xử lý file đính kèm
             if (file != null && !file.isEmpty()) {
                 log.debug("Processing attached file: {}", file.getOriginalFilename());
-                // tempFile = fileProcessingService.convertMultiPartToFile(file); // 🔥 BỊ XÓA
-                // Document document = fileProcessingService.loadDocument(tempFile); // 🔥 BỊ XÓA
-                // fileContext = document.text(); // 🔥 BỊ XÓA
-
-                // ✅ LOGIC MỚI: Ingest file vào Vector Store với metadata tạm thời
-                tempFileId = UUID.randomUUID().toString(); // Tạo ID duy nhất cho file này
+                tempFileId = UUID.randomUUID().toString();
                 documentIngestionService.ingestTemporaryFile(file, user, session.getId(), tempFileId);
                 log.debug("File {} ingested with tempFileId: {}", file.getOriginalFilename(), tempFileId);
             }
 
             runContextAnalysisAsync(session, user, prompt);
 
-            // === BẮT ĐẦU ORCHESTRATION MỚI ===
+            // Bắt đầu Orchestration
             RagContext.QueryIntent intent = classifyQueryIntent(prompt);
             log.debug("Query intent classified as: {}", intent);
 
@@ -161,98 +139,119 @@ public class ChatAIService {
                     .session(session)
                     .chatMemory(chatMemory)
                     .intent(intent)
-                    // .fileContext(fileContext) // 🔥 BỊ XÓA
-                    .tempFileId(tempFileId) // ✅ TRUYỀN ID FILE TẠM VÀO
+                    .tempFileId(tempFileId)
                     .build();
 
-            // 3. Chọn Pipeline (Strategy Pattern) và thực thi
+            // Chọn Pipeline và thực thi với khả năng phục hồi (Resilience)
             if (intent == RagContext.QueryIntent.RAG_QUERY) {
                 log.debug("Handling as RAG_QUERY. Running full RAG pipeline.");
-                context = retrievalStep.execute(context);
-                context = rerankingStep.execute(context);
-                context = generationStep.execute(context);
-                
+
+                // Retrieval Step (Critical)
+                try {
+                    context = retrievalStep.execute(context);
+                } catch (Exception e) {
+                    log.error("RAG Pipeline - CRITICAL: RetrievalStep failed. Aborting pipeline.", e);
+                    return fallbackService.getKnowledgeRetrievalErrorResponse();
+                }
+
+                // Reranking Step (Non-Critical)
+                try {
+                    context = rerankingStep.execute(context);
+                } catch (Exception e) {
+                    log.warn("RAG Pipeline - NON-CRITICAL: RerankingStep failed. Proceeding with un-reranked results.", e);
+                    // Không cần làm gì thêm, context vẫn chứa kết quả từ retrieval
+                }
+
+                // Generation Step (Critical)
+                try {
+                    context = generationStep.execute(context);
+                } catch (Exception e) {
+                    log.error("RAG Pipeline - CRITICAL: GenerationStep failed.", e);
+                    return fallbackService.getGenerationErrorResponse();
+                }
+
             } else if (intent == RagContext.QueryIntent.CHITCHAT) {
                 log.debug("Handling as CHITCHAT. Skipping RAG.");
-                context = generationStep.execute(context); 
-                
+                context = generationStep.execute(context);
+
             } else { // MEMORY_QUERY
                 log.debug("Handling as MEMORY_QUERY. Using direct memory handler.");
                 context = memoryQueryStep.execute(context);
             }
-            
-            // 4. Lấy kết quả
+
             String reply = context.getReply();
 
-            // 5. Cập nhật bộ nhớ & Lưu trữ
-            chatMemory.add(UserMessage.from(prompt));
-            chatMemory.add(AiMessage.from(reply));
+            // Cập nhật bộ nhớ và lưu trữ
+            updateMemoryAndPersist(session, prompt, reply);
 
-            ChatMessage userMsgDb = messageService.saveMessage(session, "user", prompt);
-            ChatMessage aiMsgDb = messageService.saveMessage(session, "assistant", reply);
-            saveMessagesToVectorStore(userMsgDb, aiMsgDb, session); 
-            
             return reply;
 
         } catch (Exception e) {
-            log.error("Lỗi xử lý processMessages: {}", e.getMessage(), e);
+            log.error("Lỗi xử lý processMessages không mong muốn: {}", e.getMessage(), e);
             // Cân nhắc: Thêm logic xóa tempFileId khỏi vector store nếu ingest lỗi
+            if (tempFileId != null) {
+                // TODO: Implement a cleanup mechanism for temporary files in vector store
+                log.warn("An error occurred. The temporary file with ID {} might need manual cleanup.", tempFileId);
+            }
             return fallbackService.getEmergencyResponse();
-        } 
-        // 🔥 KHỐI FINALLY BỊ XÓA
-        // finally {
-        //     fileProcessingService.deleteTempFile(tempFile);
-        // }
+        }
     }
- 
-    // ... (Các phương thức khác giữ nguyên) ...
-    
+
+    private void updateMemoryAndPersist(ChatSession session, String userQuery, String aiReply) {
+        try {
+            ChatMemory chatMemory = langChainChatMemoryService.getChatMemory(session.getId());
+            chatMemory.add(UserMessage.from(userQuery));
+            chatMemory.add(AiMessage.from(aiReply));
+
+            ChatMessage userMsgDb = messageService.saveMessage(session, "user", userQuery);
+            ChatMessage aiMsgDb = messageService.saveMessage(session, "assistant", aiReply);
+            saveMessagesToVectorStore(userMsgDb, aiMsgDb, session);
+        } catch (Exception e) {
+            log.error("Failed to update memory and persist messages for session {}: {}", session.getId(), e.getMessage(), e);
+        }
+    }
+
+
     @Async
     private void saveMessagesToVectorStore(ChatMessage userMessage, ChatMessage aiMessage, ChatSession session) {
-     try {
-         // Chuyển đổi cả hai tin nhắn sang TextSegments
-         TextSegment userSegment = createSegmentFromMessage(userMessage, session);
-         TextSegment aiSegment = createSegmentFromMessage(aiMessage, session);
+        try {
+            TextSegment userSegment = createSegmentFromMessage(userMessage, session);
+            TextSegment aiSegment = createSegmentFromMessage(aiMessage, session);
 
-         // Nhúng (embed) cả hai
-         Embedding userEmbedding = embeddingModel.embed(userSegment).content();
-         Embedding aiEmbedding = embeddingModel.embed(aiSegment).content();
+            Embedding userEmbedding = embeddingModel.embed(userSegment).content();
+            Embedding aiEmbedding = embeddingModel.embed(aiSegment).content();
 
-         // Thêm cả hai vào embedding store
-         embeddingStore.add(userEmbedding, userSegment);
-         embeddingStore.add(aiEmbedding, aiSegment);
-         
-         log.debug("Đã lưu 2 tin nhắn (User: {}, AI: {}) vào vector store cho session {}", 
-             userMessage.getId(), aiMessage.getId(), session.getId());
+            embeddingStore.add(userEmbedding, userSegment);
+            embeddingStore.add(aiEmbedding, aiSegment);
 
-     } catch (Exception e) {
-         // Chúng ta không muốn làm sập luồng chat chính nếu việc nhúng lỗi
-         log.warn("Không thể lưu message embeddings vào vector store: {}", e.getMessage());
-     }
+            log.debug("Đã lưu 2 tin nhắn (User: {}, AI: {}) vào vector store cho session {}",
+                    userMessage.getId(), aiMessage.getId(), session.getId());
+
+        } catch (Exception e) {
+            log.warn("Không thể lưu message embeddings vào vector store: {}", e.getMessage());
+        }
     }
 
     private TextSegment createSegmentFromMessage(ChatMessage message, ChatSession session) {
-     // Đây là nơi chúng ta thêm tất cả metadata mà RerankingService sẽ cần
-     Metadata metadata = Metadata.from(Map.of(
-         "messageId", message.getId().toString(),
-         "sessionId", session.getId().toString(),
-         "senderType", message.getSender(),
-         "messageTimestamp", message.getTimestamp().toString(), // Quan trọng cho hybrid rerank
-         "docType", "message" // ✅ THÊM MỚI: Phân biệt rõ ràng với 'knowledge' và 'temp_file'
-     ));
-     
-     return TextSegment.from(message.getContent(), metadata);
+        Metadata metadata = Metadata.from(Map.of(
+                "messageId", message.getId().toString(),
+                "sessionId", session.getId().toString(),
+                "senderType", message.getSender(),
+                "messageTimestamp", message.getTimestamp().toString(),
+                "docType", "message"
+        ));
+
+        return TextSegment.from(message.getContent(), metadata);
     }
-    
+
     private void hydrateChatMemoryFromDB(ChatMemory chatMemory, Long sessionId) {
         try {
-            // Lấy 20 tin nhắn gần nhất từ SQL
             List<ChatMessage> recentDbMessages = messageService.getRecentMessages(sessionId, 20);
 
             if (recentDbMessages.isEmpty()) {
                 return;
             }
-            
+
             for (ChatMessage dbMsg : recentDbMessages) {
                 if ("user".equalsIgnoreCase(dbMsg.getSender())) {
                     chatMemory.add(UserMessage.from(dbMsg.getContent()));
@@ -265,16 +264,16 @@ public class ChatAIService {
         }
     }
 
-    @Async 
+    @Async
     protected void runContextAnalysisAsync(ChatSession session, User user, String prompt) {
         try {
             EmotionContext emotionContext = emotionContextRepository.findByChatSession_Id(session.getId())
                     .orElseGet(() -> {
-                        EmotionContext ctx = new EmotionContext(); // Tạo trống
-                        ctx.setChatSession(session); // Set thủ công
-                        ctx.setUser(user);         // Set thủ công
+                        EmotionContext ctx = new EmotionContext();
+                        ctx.setChatSession(session);
+                        ctx.setUser(user);
                         return ctx;
-                    }); 
+                    });
             emotionAnalysisService.analyzeEmotion(prompt, emotionContext);
             emotionContextRepository.save(emotionContext);
 
@@ -285,11 +284,6 @@ public class ChatAIService {
         } catch (Exception e) {
             log.warn("Lỗi cập nhật context bất đồng bộ: {}", e.getMessage());
         }
-    }
-    
-    private boolean isMemoryRelatedQuestion(String prompt) {
-        // (Logic này đã được chuyển sang classifyQueryIntent)
-        return false; // Sẽ được xử lý bởi classification
     }
 
     private RagContext.QueryIntent classifyQueryIntent(String query) {
@@ -321,8 +315,7 @@ public class ChatAIService {
             } else if (response.contains("CHITCHAT")) {
                 return RagContext.QueryIntent.CHITCHAT;
             } else {
-                // Mặc định là RAG nếu không chắc
-                return RagContext.QueryIntent.RAG_QUERY; 
+                return RagContext.QueryIntent.RAG_QUERY;
             }
         } catch (Exception e) {
             log.warn("Query intent classification failed: {}. Falling back to RAG_QUERY.", e.getMessage());
