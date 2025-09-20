@@ -51,4 +51,24 @@ public class AsyncConfig {
         executor.initialize();
         return executor;
     }
+    
+    /**
+     * Định nghĩa một ThreadPoolTaskExecutor để quản lý các luồng cho các tác vụ bất đồng bộ.
+     * Điều này cho phép chúng ta kiểm soát số lượng luồng tối đa, hàng đợi, v.v.
+     * để tránh làm quá tải hệ thống.
+     */
+    @Bean(name = "fileIngestionExecutor")
+    public Executor fileIngestionExecutor() {
+        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        // Số luồng cốt lõi luôn hoạt động
+        executor.setCorePoolSize(5); 
+        // Số luồng tối đa có thể được tạo
+        executor.setMaxPoolSize(10); 
+        // Số lượng tác vụ có thể chờ trong hàng đợi trước khi bị từ chối
+        executor.setQueueCapacity(25); 
+        // Tên tiền tố cho các luồng trong pool để dễ dàng nhận dạng trong log
+        executor.setThreadNamePrefix("FileIngestion-"); 
+        executor.initialize();
+        return executor;
+    }
 }

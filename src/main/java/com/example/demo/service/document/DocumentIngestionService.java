@@ -15,6 +15,8 @@ import dev.langchain4j.store.embedding.EmbeddingStore;
 import dev.langchain4j.store.embedding.EmbeddingStoreIngestor;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -23,6 +25,7 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 
 @Service
 @RequiredArgsConstructor
@@ -51,59 +54,64 @@ public class DocumentIngestionService {
         return deletedCount;
     }
 
-    // 🔥 HÀM NÀY BỊ XÓA (đã được thay bằng ingestSingleDocument)
-    // public void ingestDocument(MultipartFile multipartFile, User user) throws IOException { ... }
-    
     /**
-     * ✅ HÀM MỚI: Nhận một danh sách file và xử lý tuần tự
+     * ✅ CẢI TIẾN: Nhận một danh sách file và xử lý bất đồng bộ.
+     * API sẽ trả về ngay lập tức sau khi các tác vụ được đưa vào hàng đợi.
      */
     public void ingestDocuments(List<MultipartFile> files, User user) {
-        log.info("Bắt đầu nạp {} file cho user {}", files.size(), user.getEmail());
+        log.info("Bắt đầu nạp {} file cho user {} một cách bất đồng bộ", files.size(), user.getEmail());
         
         for (MultipartFile file : files) {
-            try {
-                // Gọi hàm xử lý 1 file (đã đổi tên)
-                this.ingestSingleDocument(file, user);
-            } catch (Exception e) {
-                // Ghi log lỗi cho file cụ thể nhưng vẫn tiếp tục với các file khác
-                log.error("Lỗi khi nạp file {} cho user {}: {}", 
-                           file.getOriginalFilename(), user.getEmail(), e.getMessage());
-            }
+            // Gọi hàm xử lý bất đồng bộ cho từng file
+            ingestSingleDocumentAsync(file, user);
         }
-        log.info("Hoàn tất nạp {} file cho user {}", files.size(), user.getEmail());
+        
+        log.info("Đã gửi {} file vào hàng đợi xử lý cho user {}", files.size(), user.getEmail());
     }
 
     /**
-     * Nạp file vào KHO TRI THỨC LÂU DÀI (docType = 'knowledge')
+     * ✅ CẢI TIẾN: Xử lý nạp một file vào kho tri thức lâu dài một cách bất đồng bộ.
+     * Chạy trên một luồng riêng do "fileIngestionExecutor" quản lý.
      */
-    public void ingestSingleDocument(MultipartFile multipartFile, User user) throws IOException {
-        
-        File tempFile = null;
-        
+    @Async("fileIngestionExecutor")
+    public CompletableFuture<Void> ingestSingleDocumentAsync(MultipartFile multipartFile, User user) {
+        String fileName = multipartFile.getOriginalFilename();
         try {
-        	tempFile = fileProcessingService.convertMultiPartToFile(multipartFile);
+            log.info("[Async] Bắt đầu xử lý file: {}", fileName);
+            ingestSingleDocument(multipartFile, user);
+            log.info("[Async] Hoàn tất xử lý file: {}", fileName);
+        } catch (IOException e) {
+            log.error("[Async] Lỗi khi nạp file {} cho user {}: {}", 
+                       fileName, user.getEmail(), e.getMessage(), e);
+        }
+        return CompletableFuture.completedFuture(null);
+    }
+    
+    /**
+     * Logic nạp một file vào KHO TRI THỨC LÂU DÀI (docType = 'knowledge').
+     * Phương thức này giờ là private và được gọi bởi phương thức async.
+     */
+    private void ingestSingleDocument(MultipartFile multipartFile, User user) throws IOException {
+        File tempFile = null;
+        try {
+            tempFile = fileProcessingService.convertMultiPartToFile(multipartFile);
             
-            // 1. Tải document gốc
             Document originalDocument = fileProcessingService.loadDocument(tempFile);
             String originalContent = originalDocument.text();
             String fileName = multipartFile.getOriginalFilename();
 
-            // 2. TẠO NỘI DUNG MỚI: Thêm tên file vào đầu văn bản
             String newContent = String.format(
                 "Đây là nội dung trích từ file có tên: '%s'\n\n%s",
                 fileName,
                 originalContent
             );
 
-            // 3. Tạo document mới với nội dung đã sửa đổi
             Document document = Document.from(newContent, originalDocument.metadata());
             
-            // 4. Thêm metadata
             document.metadata().add("userId", user.getId().toString());
-            document.metadata().add("docType", "knowledge"); // ✅ <--- TRI THỨC LÂU DÀI
+            document.metadata().add("docType", "knowledge");
             document.metadata().add("fileName", fileName);
 
-            // 5. Nạp
             EmbeddingStoreIngestor ingestor = EmbeddingStoreIngestor.builder()
                     .documentSplitter(DocumentSplitters.recursive(500, 100))
                     .embeddingModel(embeddingModel)
