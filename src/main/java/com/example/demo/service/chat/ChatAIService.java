@@ -163,11 +163,11 @@ public class ChatAIService {
             runContextAnalysisAsync(session, user, prompt);
 
             // === 🔥 BẮT ĐẦU ORCHESTRATION MỚI ===
-//            RagContext.QueryIntent intent = classifyQueryIntent(prompt);
-//            log.debug("Query intent classified as: {}", intent);
+            RagContext.QueryIntent intent = classifyQueryIntent(prompt);
+            log.debug("Query intent classified as: {}", intent);
             
-            RagContext.QueryIntent intent = RagContext.QueryIntent.RAG_QUERY;
-            log.debug("Query intent FORCED to: {}", intent);
+//            RagContext.QueryIntent intent = RagContext.QueryIntent.RAG_QUERY;
+//            log.debug("Query intent FORCED to: {}", intent);
 
             RagContext context = RagContext.builder()
                     .initialQuery(prompt)
@@ -485,20 +485,38 @@ public class ChatAIService {
 //    }
 
     // --- LOGIC PHÂN LOẠI VẪN GIỮ LẠI Ở "NHẠC TRƯỞNG" ---
+ // ✅ PROMPT GỢI Ý ĐỂ PHÂN LOẠI TỐT HƠN
     private RagContext.QueryIntent classifyQueryIntent(String query) {
-        if (isMemoryRelatedQuestion(query)) {
-            return RagContext.QueryIntent.MEMORY_QUERY;
-        }
         try {
-            String systemPrompt = "Bạn là một AI phân loại truy vấn. ... (Giữ nguyên prompt) ...";
+            String systemPrompt = """
+                Bạn là một AI phân loại ý định truy vấn cực kỳ chính xác.
+                Nhiệm vụ của bạn là đọc truy vấn của người dùng và phân loại nó vào MỘT trong ba loại sau:
+
+                1.  RAG_QUERY:
+                    - Người dùng đang hỏi về thông tin cụ thể, sự kiện, dữ liệu, hoặc kiến thức.
+                    - Người dùng đang hỏi về nội dung của các tệp tin (ví dụ: "file X nói về cái gì?", "tóm tắt file Y").
+                    - Người dùng hỏi về các chủ đề chuyên môn (ví dụ: "giải thích code...", "lỗi...").
+                    - Bất kỳ câu hỏi nào cần tra cứu kiến thức để trả lời.
+
+                2.  MEMORY_QUERY:
+                    - Người dùng đang hỏi về chính cuộc trò chuyện (ví dụ: "tôi vừa nói gì?", "nhắc lại lời tôi").
+
+                3.  CHITCHAT:
+                    - Người dùng đang chào hỏi, tạm biệt, cảm ơn, hoặc nói chuyện phiếm không có mục đích thông tin rõ ràng.
+                    - Ví dụ: "Chào bạn", "Bạn khỏe không?", "Cảm ơn", "Tuyệt vời".
+
+                Chỉ trả lời bằng MỘT TỪ: RAG_QUERY, MEMORY_QUERY, hoặc CHITCHAT.
+                """;
+
             String response = chatLanguageModel.generate(systemPrompt + "\n\nTruy vấn: " + query);
 
             if (response.contains("MEMORY_QUERY")) {
                 return RagContext.QueryIntent.MEMORY_QUERY;
-            } else if (response.contains("RAG_QUERY")) {
-                return RagContext.QueryIntent.RAG_QUERY;
-            } else {
+            } else if (response.contains("CHITCHAT")) {
                 return RagContext.QueryIntent.CHITCHAT;
+            } else {
+                // Mặc định là RAG nếu không chắc
+                return RagContext.QueryIntent.RAG_QUERY; 
             }
         } catch (Exception e) {
             log.warn("Query intent classification failed: {}. Falling back to RAG_QUERY.", e.getMessage());
