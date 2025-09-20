@@ -7,17 +7,17 @@ import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.SystemMessage;
 import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.memory.ChatMemory;
-import dev.langchain4j.store.memory.chat.ChatMemoryStore;
-import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.ListOperations;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.ValueOperations;
 import org.springframework.stereotype.Service;
 
-import java.util.List;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
@@ -27,111 +27,177 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class LangChainChatMemoryService {
 
-    // ✅ SỬA LỖI: Chúng ta cần RedisTemplate (thay vì ChatMemoryStore)
     private final RedisTemplate<String, String> redisTemplate;
-    private final ObjectMapper objectMapper; // Đảm bảo bạn đã tiêm ObjectMapper bean
+    private final ObjectMapper objectMapper;
+    private final ConversationSummaryService conversationSummaryService;
 
-    private static final String REDIS_PREFIX = "lc4j_chat_memory:";
-    private static final int MAX_MESSAGES = 20; // Cửa sổ bộ nhớ
+    private static final String REDIS_MESSAGES_PREFIX = "lc4j_chat_messages:";
+    private static final String REDIS_SUMMARY_PREFIX = "lc4j_chat_summary:";
+    private static final int MAX_MESSAGES = 20;
+    private static final int SUMMARY_TRIGGER_COUNT = 15;
+    private static final int MESSAGES_TO_SUMMARIZE = 10;
 
-    // Cache các đối tượng memory để tránh tạo lại
     private final Map<Long, ChatMemory> memoryCache = new ConcurrentHashMap<>();
 
     public ChatMemory getChatMemory(Long sessionId) {
-        return memoryCache.computeIfAbsent(sessionId, id -> 
-            new RedisListChatMemory(id, redisTemplate, objectMapper)
+        return memoryCache.computeIfAbsent(sessionId, id ->
+                // ✅ SỬA LỖI: Truyền redisTemplate và memoryCache vào constructor
+                new SummarizingRedisChatMemory(
+                        id,
+                        this.redisTemplate, // Sửa ở đây
+                        this.objectMapper,
+                        this.conversationSummaryService,
+                        this.memoryCache // Sửa ở đây
+                )
         );
     }
 
     /**
-     * ✅ LỚP INNER CLASS ĐƯỢC TỐI ƯU HÓA HOÀN TOÀN
-     * Triển khai ChatMemory sử dụng Redis LIST thay vì Value (SET)
+     * LỚP INNER CLASS ĐÃ ĐƯỢC SỬA LỖI HOÀN CHỈNH
      */
     @RequiredArgsConstructor
-    private static class RedisListChatMemory implements ChatMemory {
+    private static class SummarizingRedisChatMemory implements ChatMemory {
 
-        private final String key;
+        private final Long sessionId;
+        private final String messagesKey;
+        private final String summaryKey;
         private final ListOperations<String, String> listOps;
+        private final ValueOperations<String, String> valueOps;
         private final ObjectMapper objectMapper;
+        private final ConversationSummaryService summaryService;
+        // ✅ SỬA LỖI: Thêm các trường để lớp inner có thể truy cập
+        private final RedisTemplate<String, String> redisTemplate;
+        private final Map<Long, ChatMemory> memoryCache;
 
-        public RedisListChatMemory(Long sessionId, RedisTemplate<String, String> redisTemplate, ObjectMapper objectMapper) {
-            this.key = REDIS_PREFIX + sessionId;
+
+        public SummarizingRedisChatMemory(
+                Long sessionId,
+                RedisTemplate<String, String> redisTemplate,
+                ObjectMapper objectMapper,
+                ConversationSummaryService summaryService,
+                Map<Long, ChatMemory> memoryCache // Thêm vào constructor
+        ) {
+            this.sessionId = sessionId;
+            this.messagesKey = REDIS_MESSAGES_PREFIX + sessionId;
+            this.summaryKey = REDIS_SUMMARY_PREFIX + sessionId;
+            // ✅ SỬA LỖI: Gán các đối tượng được truyền vào
+            this.redisTemplate = redisTemplate;
+            this.memoryCache = memoryCache;
             this.listOps = redisTemplate.opsForList();
+            this.valueOps = redisTemplate.opsForValue();
             this.objectMapper = objectMapper;
+            this.summaryService = summaryService;
         }
 
         @Override
         public String id() {
-            return key;
+            return String.valueOf(sessionId);
         }
 
-        /**
-         * ✅ TỐI ƯU HÓA: Đọc trực tiếp từ Redis List.
-         */
         @Override
         public List<ChatMessage> messages() {
             try {
-                List<String> jsonMessages = listOps.range(key, 0, MAX_MESSAGES - 1);
-                if (jsonMessages == null || jsonMessages.isEmpty()) {
-                    return new ArrayList<>();
+                String summaryJson = valueOps.get(summaryKey);
+                List<ChatMessage> chatMessages = new ArrayList<>();
+                if (summaryJson != null && !summaryJson.isEmpty()) {
+                    chatMessages.add(deserialize(summaryJson));
                 }
-                
-                // Tin nhắn Redis lưu từ mới nhất -> cũ nhất (vì LPUSH), 
-                // chúng ta cần đảo ngược lại
-                return jsonMessages.stream()
+
+                List<String> jsonMessages = listOps.range(messagesKey, 0, -1);
+                if (jsonMessages == null || jsonMessages.isEmpty()) {
+                    return chatMessages;
+                }
+
+                List<ChatMessage> recentMessages = jsonMessages.stream()
                         .map(this::deserialize)
-                        .collect(Collectors.collectingAndThen(
-                            Collectors.toList(), 
-                            list -> {
-                                java.util.Collections.reverse(list);
-                                return list;
-                            }
-                        ));
+                        .collect(Collectors.toList());
+                Collections.reverse(recentMessages);
+                chatMessages.addAll(recentMessages);
+
+                return chatMessages;
             } catch (Exception e) {
-                log.warn("Không thể tải chat memory từ Redis: {}", e.getMessage());
+                log.warn("Không thể tải chat memory từ Redis cho session {}: {}", sessionId, e.getMessage());
                 return new ArrayList<>();
             }
         }
 
-        /**
-         * ✅ TỐI ƯU HÓA: Chỉ PUSH tin nhắn mới và TRIM danh sách.
-         */
         @Override
         public void add(ChatMessage message) {
             try {
                 String jsonMessage = serialize(message);
-                listOps.leftPush(key, jsonMessage); // LPUSH (thêm vào đầu)
-                listOps.trim(key, 0, MAX_MESSAGES - 1); // TRIM (giữ lại 20)
+                listOps.leftPush(messagesKey, jsonMessage);
+                listOps.trim(messagesKey, 0, MAX_MESSAGES - 1);
+
+                Long currentMessageCount = listOps.size(messagesKey);
+                if (currentMessageCount != null && currentMessageCount >= SUMMARY_TRIGGER_COUNT) {
+                    summarizeAndPrune();
+                }
             } catch (Exception e) {
-                log.warn("Không thể lưu chat memory vào Redis: {}", e.getMessage());
+                log.error("Không thể lưu chat memory vào Redis cho session {}: {}", sessionId, e.getMessage(), e);
             }
+        }
+
+        private void summarizeAndPrune() {
+            log.info("Kích hoạt tóm tắt cho session ID: {}", sessionId);
+
+            // ✅ SỬA LỖI: Lấy kích thước danh sách hiện tại một cách an toàn
+            Long currentMessageCount = listOps.size(messagesKey);
+            if (currentMessageCount == null || currentMessageCount < MESSAGES_TO_SUMMARIZE) {
+                return; // Không đủ tin nhắn để tóm tắt
+            }
+
+            List<String> jsonMessagesToSummarize = listOps.range(messagesKey, -MESSAGES_TO_SUMMARIZE, -1);
+            if (jsonMessagesToSummarize == null || jsonMessagesToSummarize.isEmpty()) {
+                return;
+            }
+
+            List<ChatMessage> messagesToSummarize = jsonMessagesToSummarize.stream()
+                    .map(this::deserialize)
+                    .collect(Collectors.toList());
+            Collections.reverse(messagesToSummarize);
+
+            String existingSummaryJson = valueOps.get(summaryKey);
+            if (existingSummaryJson != null) {
+                messagesToSummarize.add(0, deserialize(existingSummaryJson));
+            }
+
+            String newSummaryContent = summaryService.generateSummary(messagesToSummarize);
+            SystemMessage newSummaryMessage = SystemMessage.from("Đây là tóm tắt cuộc trò chuyện trước đó: " + newSummaryContent);
+
+            valueOps.set(summaryKey, serialize(newSummaryMessage));
+
+            // ✅ SỬA LỖI: Sử dụng currentMessageCount đã được xác định
+            listOps.trim(messagesKey, 0, currentMessageCount - MESSAGES_TO_SUMMARIZE - 1);
+            log.info("Hoàn thành tóm tắt và làm gọn bộ nhớ cho session ID: {}", sessionId);
         }
 
         @Override
         public void clear() {
-            listOps.getOperations().delete(key);
+            // ✅ SỬA LỖI: Sử dụng redisTemplate và memoryCache đã được truyền vào
+            redisTemplate.delete(messagesKey);
+            redisTemplate.delete(summaryKey);
+            memoryCache.remove(sessionId);
         }
 
-        // --- Các phương thức Serialization/Deserialization Helper ---
-        // (Đây là phần phức tạp vì ChatMessage là một interface)
-
+        // --- Các phương thức Serialization/Deserialization Helper (Giữ nguyên) ---
         @SneakyThrows(JsonProcessingException.class)
         private String serialize(ChatMessage message) {
             String type;
+            Object content;
             if (message instanceof AiMessage) {
                 type = "ai";
+                content = message.text();
             } else if (message instanceof UserMessage) {
                 type = "user";
+                content = message.text();
             } else if (message instanceof SystemMessage) {
                 type = "system";
+                content = message.text();
             } else {
                 throw new IllegalArgumentException("Loại tin nhắn không xác định: " + message.getClass());
             }
-            // Lưu dưới dạng một map đơn giản
-            return objectMapper.writeValueAsString(Map.of(
-                "type", type, 
-                "content", message.text()
-            ));
+
+            return objectMapper.writeValueAsString(Map.of("type", type, "content", content));
         }
 
         @SneakyThrows
