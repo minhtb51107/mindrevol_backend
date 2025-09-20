@@ -137,76 +137,6 @@ public class ChatAIService {
     
     // private final LangChainChatMemoryService langChain4jMemoryService; // 🔥 ĐÃ XÓA (Bị trùng)
 
-
- // TRONG ChatAIService.java
-    public String processMessages(Long sessionId, List<ChatMessageDTO> messageDTOs, User user) {
-        try {
-            ChatSession session = sessionRepo.findById(sessionId)
-                    .orElseThrow(() -> new IllegalArgumentException("Session không tồn tại"));
-
-            String prompt = messageDTOs.get(messageDTOs.size() - 1).getContent();
-            ChatMemory chatMemory = langChainChatMemoryService.getChatMemory(sessionId);
-
-            if (chatMemory.messages().isEmpty()) {
-                 log.debug("Chat memory for session {} is empty. Hydrating from database...", sessionId);
-                 hydrateChatMemoryFromDB(chatMemory, sessionId);
-            }
-
-            // Chạy phân tích context nền (không thay đổi)
-            runContextAnalysisAsync(session, user, prompt);
-
-            // === 🔥 BẮT ĐẦU ORCHESTRATION MỚI ===
-
-            // 1. Phân loại Intent (Router)
-            RagContext.QueryIntent intent = classifyQueryIntent(prompt);
-            log.debug("Query intent classified as: {}", intent);
-
-            // 2. Khởi tạo Context
-            RagContext context = RagContext.builder()
-                    .initialQuery(prompt)
-                    .user(user)
-                    .session(session)
-                    .chatMemory(chatMemory)
-                    .intent(intent)
-                    // ✅ Không có fileContext ở đây
-                    .build();
-
-            // 3. Chọn Pipeline (Strategy Pattern) và thực thi
-            if (intent == RagContext.QueryIntent.RAG_QUERY) {
-                log.debug("Handling as RAG_QUERY. Running full RAG pipeline.");
-                context = retrievalStep.execute(context);
-                context = rerankingStep.execute(context);
-                context = generationStep.execute(context);
-                
-            } else if (intent == RagContext.QueryIntent.CHITCHAT) {
-                log.debug("Handling as CHITCHAT. Skipping RAG.");
-                // CHITCHAT vẫn cần GenerationStep, nhưng nó sẽ bỏ qua RAG context
-                context = generationStep.execute(context); 
-                
-            } else { // MEMORY_QUERY
-                log.debug("Handling as MEMORY_QUERY. Using direct memory handler.");
-                context = memoryQueryStep.execute(context);
-            }
-
-            // 4. Lấy kết quả
-            String reply = context.getReply();
-
-            // 5. Cập nhật bộ nhớ & Lưu trữ (Không thay đổi)
-            chatMemory.add(UserMessage.from(prompt));
-            chatMemory.add(AiMessage.from(reply));
-
-            ChatMessage userMsgDb = messageService.saveMessage(session, "user", prompt);
-            ChatMessage aiMsgDb = messageService.saveMessage(session, "assistant", reply);
-            saveMessagesToVectorStore(userMsgDb, aiMsgDb, session); 
-            
-            return reply;
-
-        } catch (Exception e) {
-            log.error("Lỗi xử lý processMessages: {}", e.getMessage(), e);
-            return fallbackService.getEmergencyResponse();
-        }
-    }
-
     // ✅ PHƯƠNG THỨC MỚI ĐỂ XỬ LÝ FILE UPLOAD
     public String processMessages(Long sessionId, String prompt, MultipartFile file, User user) {
         File tempFile = null;
@@ -233,8 +163,11 @@ public class ChatAIService {
             runContextAnalysisAsync(session, user, prompt);
 
             // === 🔥 BẮT ĐẦU ORCHESTRATION MỚI ===
-            RagContext.QueryIntent intent = classifyQueryIntent(prompt);
-            log.debug("Query intent classified as: {}", intent);
+//            RagContext.QueryIntent intent = classifyQueryIntent(prompt);
+//            log.debug("Query intent classified as: {}", intent);
+            
+            RagContext.QueryIntent intent = RagContext.QueryIntent.RAG_QUERY;
+            log.debug("Query intent FORCED to: {}", intent);
 
             RagContext context = RagContext.builder()
                     .initialQuery(prompt)

@@ -1,5 +1,6 @@
 package com.example.demo.controller.chat; // (Hoặc một package controller mới nếu bạn muốn)
 
+import com.example.demo.dto.chat.DocumentInfoDTO;
 import com.example.demo.model.auth.User;
 import com.example.demo.repository.auth.UserRepository;
 import com.example.demo.service.document.DocumentIngestionService;
@@ -11,6 +12,8 @@ import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.util.Arrays;
+import java.util.List;
 import java.util.Map;
 
 @RestController
@@ -27,20 +30,25 @@ public class DocumentIngestionController {
 
     @PostMapping("/upload")
     public ResponseEntity<?> uploadDocument(
-            @RequestParam("file") MultipartFile file,
+            // ✅ THAY ĐỔI: Chuyển sang mảng và đổi tên thành "files" (số nhiều)
+            @RequestParam("files") MultipartFile[] files,
             @RequestHeader("Authorization") String authHeader) {
         
         try {
             User user = extractUserFromAuth(authHeader);
             
-            if (file.isEmpty()) {
+            // ✅ THAY ĐỔI: Kiểm tra mảng
+            if (files == null || files.length == 0) {
                 return ResponseEntity.badRequest().body(Map.of("message", "File không được để trống"));
             }
 
-            // Gọi service ingestion
-            ingestionService.ingestDocument(file, user);
+            // ✅ THÊM MỚI: Chuyển mảng sang List
+            List<MultipartFile> fileList = Arrays.asList(files);
 
-            return ResponseEntity.ok(Map.of("message", "File " + file.getOriginalFilename() + " đã được nạp thành công."));
+            // ✅ THAY ĐỔI: Gọi hàm service số nhiều (chúng ta sẽ tạo nó ở bước 2)
+            ingestionService.ingestDocuments(fileList, user);
+
+            return ResponseEntity.ok(Map.of("message", "Đã nạp thành công " + fileList.size() + " tệp tin."));
         
         } catch (AccessDeniedException e) {
             return ResponseEntity.status(403).body(Map.of("message", e.getMessage()));
@@ -63,4 +71,48 @@ public class DocumentIngestionController {
         return userRepository.findByEmail(email)
                 .orElseThrow(() -> new UsernameNotFoundException("User not found"));
     }
+    
+    /**
+     * ✅ ENDPOINT MỚI: Lấy danh sách tất cả file đã nạp
+     */
+    @GetMapping
+    public ResponseEntity<List<DocumentInfoDTO>> getDocuments(
+            @RequestHeader("Authorization") String authHeader) {
+        try {
+            User user = extractUserFromAuth(authHeader);
+            List<DocumentInfoDTO> documents = ingestionService.listDocuments(user);
+            return ResponseEntity.ok(documents);
+        } catch (AccessDeniedException e) {
+            return ResponseEntity.status(403).body(null);
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError().body(null);
+        }
+    }
+
+    /**
+     * ✅ ENDPOINT MỚI: Xóa một file (và tất cả các chunk của nó)
+     */
+    @DeleteMapping
+    public ResponseEntity<?> deleteDocument(
+            @RequestParam("fileName") String fileName, // Dùng RequestParam cho an toàn
+            @RequestHeader("Authorization") String authHeader) {
+        
+        if (fileName == null || fileName.isBlank()) {
+            return ResponseEntity.badRequest().body(Map.of("message", "fileName là bắt buộc"));
+        }
+        
+        try {
+            User user = extractUserFromAuth(authHeader);
+            int deletedCount = ingestionService.deleteDocument(fileName, user);
+            return ResponseEntity.ok(Map.of(
+                "message", "Đã xóa file '" + fileName + "' và " + deletedCount + " mẩu tin."
+            ));
+        
+        } catch (AccessDeniedException e) {
+            return ResponseEntity.status(403).body(Map.of("message", e.getMessage()));
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError().body(Map.of("message", "Không thể xóa file: " + e.getMessage()));
+        }
+    }
+    
 }
