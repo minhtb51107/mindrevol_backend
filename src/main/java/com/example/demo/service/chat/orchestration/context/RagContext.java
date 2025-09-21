@@ -19,12 +19,11 @@ import java.util.Map;
 public class RagContext {
 
     // --- Đầu vào ban đầu ---
-    private final String initialQuery;
+    private String initialQuery; // <-- MODIFIED: Đã xóa 'final'
     private final User user;
     private final ChatSession session;
     private final ChatMemory chatMemory;
-    // 🔥 ĐÃ XÓA: private final String fileContext;
-    private final String tempFileId; // ✅ <--- THAY THẾ BẰNG DÒNG NÀY
+    private final String tempFileId;
 
     // --- Dữ liệu được xử lý qua các bước ---
 
@@ -49,7 +48,7 @@ public class RagContext {
     // --- Kết quả cuối cùng ---
     private String reply;
 
-    // --- Enum Intent (di chuyển từ ChatAIService) ---
+    // --- Enum Intent ---
     public enum QueryIntent {
         RAG_QUERY,
         CHITCHAT,
