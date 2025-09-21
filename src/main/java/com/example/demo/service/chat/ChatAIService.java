@@ -8,11 +8,12 @@ import com.example.demo.model.chat.EmotionContext;
 import com.example.demo.repository.chat.ChatSessionRepository;
 import com.example.demo.repository.chat.ConversationStateRepository.ConversationStateRepository;
 import com.example.demo.repository.chat.EmotionContextRepository.EmotionContextRepository;
-import com.example.demo.service.chat.agent.OrchestratorService;
+// import com.example.demo.service.chat.agent.OrchestratorService; // <-- ĐÃ XÓA
 import com.example.demo.service.chat.emotion.EmotionAnalysisService;
 import com.example.demo.service.chat.fallback.FallbackService;
 import com.example.demo.service.chat.memory.langchain.LangChainChatMemoryService;
 import com.example.demo.service.chat.orchestration.context.RagContext;
+import com.example.demo.service.chat.orchestration.pipeline.PipelineManager; // <-- SỬ DỤNG
 import com.example.demo.service.chat.state.ConversationStateService;
 import com.example.demo.service.document.DocumentIngestionService;
 import dev.langchain4j.data.embedding.Embedding;
@@ -53,7 +54,8 @@ public class ChatAIService {
     private final ConversationStateRepository conversationStateRepository;
 
     // --- NEW ORCHESTRATION LAYER ---
-    private final OrchestratorService orchestratorService;
+    // private final OrchestratorService orchestratorService; // <-- ĐÃ XÓA
+    private final PipelineManager pipelineManager; // <-- THAY THẾ
 
     public String processMessages(Long sessionId, String prompt, MultipartFile file, User user) {
         String tempFileId = null;
@@ -68,7 +70,6 @@ public class ChatAIService {
                 hydrateChatMemoryFromDB(chatMemory, sessionId);
             }
 
-            // Handle file attachments
             if (file != null && !file.isEmpty()) {
                 log.debug("Processing attached file: {}", file.getOriginalFilename());
                 tempFileId = UUID.randomUUID().toString();
@@ -76,10 +77,9 @@ public class ChatAIService {
                 log.debug("File {} ingested with tempFileId: {}", file.getOriginalFilename(), tempFileId);
             }
 
-            // Run async context analysis (emotion, state, etc.)
             runContextAnalysisAsync(session, user, prompt);
 
-            // --- START ORCHESTRATION ---
+            // --- START REFACTORED ORCHESTRATION ---
             // 1. Create the initial context object
             RagContext context = RagContext.builder()
                     .initialQuery(prompt)
@@ -89,10 +89,13 @@ public class ChatAIService {
                     .tempFileId(tempFileId)
                     .build();
 
-            // 2. Delegate the entire core logic to the Orchestrator
-            log.debug("Delegating to OrchestratorService...");
-            String reply = orchestratorService.orchestrate(context);
+            // 2. Execute the pipeline
+            log.debug("Executing 'default-rag' pipeline...");
+            RagContext resultContext = pipelineManager.run(context, "default-rag"); // <-- THAY ĐỔI QUAN TRỌNG
             
+            // Lấy câu trả lời cuối cùng từ context
+            String reply = resultContext.getReply(); // <-- SỬA Ở ĐÂY
+
             // 3. Update memory and persist the conversation
             updateMemoryAndPersist(session, prompt, reply);
 
@@ -100,15 +103,14 @@ public class ChatAIService {
 
         } catch (Exception e) {
             log.error("Unhandled exception in processMessages: {}", e.getMessage(), e);
-            // Consider: Add logic to clean up tempFileId from vector store if ingest fails
             if (tempFileId != null) {
-                // TODO: Implement a cleanup mechanism for temporary files in vector store
                 log.warn("An error occurred. The temporary file with ID {} might need manual cleanup.", tempFileId);
             }
             return fallbackService.getEmergencyResponse();
         }
     }
 
+    // ... (Các phương thức còn lại giữ nguyên không đổi)
     private void updateMemoryAndPersist(ChatSession session, String userQuery, String aiReply) {
         try {
             ChatMemory chatMemory = langChainChatMemoryService.getChatMemory(session.getId());
@@ -197,8 +199,4 @@ public class ChatAIService {
             log.warn("Async context update failed: {}", e.getMessage());
         }
     }
-
-    //
-    // The classifyQueryIntent method has been removed as this logic is now handled by the OrchestratorService
-    //
 }

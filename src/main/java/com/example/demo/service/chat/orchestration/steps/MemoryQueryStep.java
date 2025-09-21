@@ -1,6 +1,9 @@
 package com.example.demo.service.chat.orchestration.steps;
 
+import com.example.demo.config.monitoring.LogExecutionTime;
 import com.example.demo.service.chat.orchestration.context.RagContext;
+import com.example.demo.service.chat.orchestration.pipeline.PipelineStep;
+
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.UserMessage;
 import lombok.RequiredArgsConstructor;
@@ -11,8 +14,15 @@ import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
-public class MemoryQueryStep implements RagStep {
+public class MemoryQueryStep implements PipelineStep {
 
+    // ✅ THAY ĐỔI 3: Thêm phương thức getStepName()
+    @Override
+    @LogExecutionTime
+    public String getStepName() {
+        return "memory-query"; // Tên này phải khớp với trong application.yml
+    }
+    
     @Override
     public RagContext execute(RagContext context) {
         String reply = handleMemoryQuestion(context.getChatMemory().messages(), context.getInitialQuery());

@@ -1,6 +1,9 @@
 package com.example.demo.service.chat.orchestration.steps;
 
+import com.example.demo.config.monitoring.LogExecutionTime;
 import com.example.demo.service.chat.orchestration.context.RagContext;
+import com.example.demo.service.chat.orchestration.pipeline.PipelineStep;
+
 import dev.langchain4j.data.embedding.Embedding;
 import dev.langchain4j.data.segment.TextSegment;
 import dev.langchain4j.model.embedding.EmbeddingModel;
@@ -19,11 +22,17 @@ import org.springframework.stereotype.Service;
 @Slf4j
 @Service
 @RequiredArgsConstructor
-public class RetrievalStep implements RagStep {
+public class RetrievalStep implements PipelineStep  {
 
     private final EmbeddingModel embeddingModel;
     private final EmbeddingStore<TextSegment> embeddingStore;
+    
+    @Override
+    public String getStepName() {
+        return "retrieval"; // Tên định danh duy nhất
+    }
 
+    @LogExecutionTime
     @Override
     public RagContext execute(RagContext context) {
     	// ✅ SỬ DỤNG TRUY VẤN ĐÃ ĐƯỢC BIẾN ĐỔI

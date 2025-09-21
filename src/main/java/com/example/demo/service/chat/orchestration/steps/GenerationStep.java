@@ -1,6 +1,8 @@
 package com.example.demo.service.chat.orchestration.steps;
 
+import com.example.demo.config.monitoring.LogExecutionTime;
 import com.example.demo.service.chat.orchestration.context.RagContext;
+import com.example.demo.service.chat.orchestration.pipeline.PipelineStep;
 import com.example.demo.service.chat.preference.UserPreferenceService;
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessage;
@@ -19,12 +21,20 @@ import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
-public class GenerationStep implements RagStep {
+public class GenerationStep implements PipelineStep  {
 
     private final ChatLanguageModel chatLanguageModel;
     private final UserPreferenceService userPreferenceService;
+    
+    // ✅ THAY ĐỔI 3: Thêm phương thức getStepName()
+    @Override
+    public String getStepName() {
+        return "generation"; // Tên này phải khớp với trong application.yml
+    }
+
 
     @Override
+    @LogExecutionTime
     public RagContext execute(RagContext context) {
         // 1. Lấy sở thích người dùng
         Map<String, Object> userPrefs = userPreferenceService.getUserPreferencesForPrompt(context.getUser().getId());
