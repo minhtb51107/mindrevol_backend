@@ -6,6 +6,7 @@ import com.example.demo.service.chat.ChatMessageService;
 import com.example.demo.service.chat.guardrail.GuardrailManager;
 import com.example.demo.service.chat.orchestration.context.RagContext;
 import com.example.demo.service.chat.orchestration.pipeline.PipelineStep;
+import com.example.demo.service.chat.orchestration.pipeline.result.GenerationStepResult;
 import com.example.demo.service.chat.preference.UserPreferenceService;
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessage;
@@ -60,17 +61,22 @@ public class GenerationStep implements PipelineStep {
 
     @Override
     @LogExecutionTime
-    public RagContext execute(RagContext context) {
+    public GenerationStepResult execute(RagContext context) {
         List<ChatMessage> finalLcMessages = buildFinalLc4jMessages(context);
-        context.setFinalLcMessages(finalLcMessages);
+        
+        // Logic cho streaming hoặc blocking vẫn giữ nguyên, 
+        // nhưng kết quả cuối cùng sẽ được đóng gói vào GenerationStepResult.
+        
+        // Ví dụ với blocking generation:
+        Response<AiMessage> response = chatLanguageModel.generate(finalLcMessages);
+        String finalReply = response.content().text();
+        String safeResponse = guardrailManager.checkOutput(finalReply);
+        persistConversation(context, context.getInitialQuery(), safeResponse);
 
-        if (context.getSseEmitter() != null) {
-            executeStreamingGeneration(context, finalLcMessages);
-        } else {
-            executeBlockingGeneration(context, finalLcMessages);
-        }
-
-        return context;
+        return GenerationStepResult.builder()
+                .finalLcMessages(finalLcMessages)
+                .reply(safeResponse)
+                .build();
     }
 
     private void executeBlockingGeneration(RagContext context, List<ChatMessage> messages) {
