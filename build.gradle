@@ -48,6 +48,8 @@ dependencies {
     implementation 'org.apache.tika:tika-parsers-standard-package:2.9.2' 
     implementation 'dev.langchain4j:langchain4j-document-parser-apache-tika:0.35.0'
     
+    implementation 'org.springframework.retry:spring-retry'
+    
     //implementation platform("org.springframework.ai:spring-ai-bom:1.1.0-M1")
 	//implementation "org.springframework.ai:spring-ai-starter-model-openai"
 	//implementation "org.springframework.ai:spring-ai-client-chat"

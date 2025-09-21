@@ -14,6 +14,8 @@ import lombok.Data;
 import java.util.List;
 import java.util.Map;
 
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+
 @Data
 @Builder
 public class RagContext {
@@ -26,6 +28,8 @@ public class RagContext {
     private final String tempFileId;
     
     private String pipelineName; // <-- THÊM THUỘC TÍNH NÀY ĐỂ SỬA LỖI
+    
+    private SseEmitter sseEmitter;
 
     // --- Dữ liệu được xử lý qua các bước ---
 

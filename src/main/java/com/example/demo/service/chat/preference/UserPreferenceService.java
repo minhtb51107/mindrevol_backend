@@ -7,7 +7,10 @@ import com.example.demo.repository.auth.UserRepository; // THÊM IMPORT NÀY
 import com.example.demo.repository.chat.UserPreferenceRepository.UserPreferenceRepository;
 
 import lombok.RequiredArgsConstructor;
+
+import org.hibernate.Hibernate;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Collections;
 import java.util.HashMap;
@@ -121,15 +124,50 @@ public class UserPreferenceService {
     }
     
     // ✅ THÊM PHƯƠNG THỨC ĐỂ LẤY USER PREFERENCES CHO PROMPT BUILDING
+    /**
+     * --- PHƯƠNG THỨC ĐÃ ĐƯỢC THIẾT KẾ LẠI ĐỂ CHỐNG LỖI ---
+     * Lấy sở thích của người dùng và trả về một Map an toàn, không chứa Entity.
+     * Toàn bộ việc truy cập database được thực hiện và hoàn tất bên trong phương thức này.
+     */
+    @Transactional(readOnly = true)
     public Map<String, Object> getUserPreferencesForPrompt(Long userId) {
-        UserPreference preference = getOrCreateUserPreference(userId);
+        // 1. Lấy UserPreference entity bên trong transaction
+        UserPreference preference = userPreferenceRepository.findByUserId(userId)
+            .orElseGet(() -> createDefaultPreferenceInTransaction(userId)); // Gọi một hàm private nếu cần tạo mới
+
+        // 2. Chuyển đổi dữ liệu từ Entity sang một Map đơn giản.
+        // Bằng cách này, chúng ta buộc Hibernate phải tải tất cả dữ liệu lazy ngay tại đây.
         Map<String, Object> prefs = new HashMap<>();
-        
         prefs.put("communicationStyle", preference.getCommunicationStyle());
         prefs.put("detailPreference", preference.getDetailPreference());
         prefs.put("learningStyle", preference.getLearningStyle());
-        prefs.put("favoriteTopics", preference.getFavoriteTopics());
         
+        // Đặc biệt xử lý collection lazy: tạo một bản sao của nó.
+        if (preference.getFavoriteTopics() != null) {
+            prefs.put("favoriteTopics", new HashMap<>(preference.getFavoriteTopics()));
+        } else {
+            prefs.put("favoriteTopics", Collections.emptyMap());
+        }
+        
+        // 3. Trả về Map an toàn. Đối tượng này không còn kết nối với session Hibernate nữa.
         return prefs;
+    }
+
+    /**
+     * Phương thức private này đảm bảo việc tạo mới cũng nằm trong một transaction
+     * nếu được gọi từ một phương thức transactional khác.
+     */
+    private UserPreference createDefaultPreferenceInTransaction(Long userId) {
+        User user = userRepository.findById(userId)
+            .orElseThrow(() -> new RuntimeException("User not found with id: " + userId));
+        
+        UserPreference preference = new UserPreference();
+        preference.setUser(user);
+        preference.setFavoriteTopics(new HashMap<>());
+        preference.setCommunicationStyle("balanced");
+        preference.setDetailPreference("balanced");
+        preference.setLearningStyle("visual");
+        // Không cần save ở đây nếu phương thức gọi nó sẽ save
+        return preference;
     }
 }

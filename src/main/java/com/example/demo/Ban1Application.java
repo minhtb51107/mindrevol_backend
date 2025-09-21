@@ -2,6 +2,8 @@ package com.example.demo;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.retry.annotation.EnableRetry;
+import org.springframework.scheduling.annotation.EnableAsync;
 import org.springframework.scheduling.annotation.EnableScheduling; // ✅ Giữ lại
 
 // ✅ THÊM TẤT CẢ CÁC IMPORT NÀY
@@ -23,7 +25,9 @@ import org.springframework.scheduling.annotation.EnableScheduling; // ✅ Giữ 
 //    // ✅ DÒNG MỚI BẠN CẦN THÊM VÀO EXCLUDE
 //    OpenAiModerationAutoConfiguration.class
 })
-@EnableScheduling // ✅ Giữ lại annotation này
+@EnableAsync
+@EnableScheduling
+@EnableRetry
 public class Ban1Application {
 
 	public static void main(String[] args) {

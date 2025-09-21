@@ -20,6 +20,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
+import org.springframework.retry.annotation.Backoff;
+import org.springframework.retry.annotation.Retryable;
+import org.springframework.stereotype.Service;
+import org.springframework.web.client.HttpServerErrorException;
+import org.springframework.web.client.ResourceAccessException;
+
 @Slf4j
 @Component
 @RequiredArgsConstructor
@@ -37,6 +43,14 @@ public class CohereRerankClient {
         return cohereApiKey != null && !cohereApiKey.isBlank();
     }
 
+    @Retryable(
+            value = {
+                HttpServerErrorException.class, // Thử lại với các lỗi server (500, 503,...)
+                ResourceAccessException.class   // Thử lại với các lỗi kết nối mạng
+            },
+            maxAttempts = 3, // Thử lại tối đa 3 lần
+            backoff = @Backoff(delay = 1500) // Chờ 1.5 giây giữa các lần thử
+        )
     public List<EmbeddingMatch<TextSegment>> rerank(String query, List<EmbeddingMatch<TextSegment>> documents, int topK) {
         if (!isAvailable()) {
             throw new IllegalStateException("Cohere API key not configured");
