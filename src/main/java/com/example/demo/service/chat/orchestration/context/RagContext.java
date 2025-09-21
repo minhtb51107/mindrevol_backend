@@ -30,6 +30,8 @@ public class RagContext {
 
     // (Từ ClassificationStep)
     private QueryIntent intent;
+    
+    private String transformedQuery;
 
     // (Từ RetrievalStep)
     private Embedding queryEmbedding;

@@ -60,6 +60,7 @@ import com.example.demo.service.chat.memory.langchain.LangChainChatMemoryService
 import com.example.demo.service.chat.orchestration.context.RagContext;
 import com.example.demo.service.chat.orchestration.steps.GenerationStep;
 import com.example.demo.service.chat.orchestration.steps.MemoryQueryStep;
+import com.example.demo.service.chat.orchestration.steps.QueryTransformationStep;
 import com.example.demo.service.chat.orchestration.steps.RerankingStep;
 import com.example.demo.service.chat.orchestration.steps.RetrievalStep;
 
@@ -103,8 +104,8 @@ public class ChatAIService {
     private final MemoryQueryStep memoryQueryStep;
 
     // SERVICES
-    private final FileProcessingService fileProcessingService;
     private final DocumentIngestionService documentIngestionService;
+    private final QueryTransformationStep queryTransformationStep;
 
     public String processMessages(Long sessionId, String prompt, MultipartFile file, User user) {
         String tempFileId = null;
@@ -145,6 +146,14 @@ public class ChatAIService {
             // Chọn Pipeline và thực thi với khả năng phục hồi (Resilience)
             if (intent == RagContext.QueryIntent.RAG_QUERY) {
                 log.debug("Handling as RAG_QUERY. Running full RAG pipeline.");
+                
+                // ✅ BƯỚC MỚI: Query Transformation (Non-Critical)
+                try {
+                    context = queryTransformationStep.execute(context);
+                } catch (Exception e) {
+                    log.warn("RAG Pipeline - NON-CRITICAL: QueryTransformationStep failed. Proceeding with original query.", e);
+                    context.setTransformedQuery(context.getInitialQuery()); // Fallback
+                }
 
                 // Retrieval Step (Critical)
                 try {

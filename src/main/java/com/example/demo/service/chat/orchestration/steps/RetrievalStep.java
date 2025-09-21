@@ -12,8 +12,11 @@ import dev.langchain4j.store.embedding.filter.comparison.IsEqualTo;
 import dev.langchain4j.store.embedding.filter.logical.And;
 import dev.langchain4j.store.embedding.filter.logical.Or;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+
 import org.springframework.stereotype.Service;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class RetrievalStep implements RagStep {
@@ -23,8 +26,15 @@ public class RetrievalStep implements RagStep {
 
     @Override
     public RagContext execute(RagContext context) {
+    	// ✅ SỬ DỤNG TRUY VẤN ĐÃ ĐƯỢC BIẾN ĐỔI
+        String queryToEmbed = context.getTransformedQuery() != null ?
+                              context.getTransformedQuery() :
+                              context.getInitialQuery();
+
+        log.debug("Executing retrieval with query: \"{}\"", queryToEmbed);
+
         // 1. Nhúng câu truy vấn
-        Embedding queryEmbedding = embeddingModel.embed(context.getInitialQuery()).content();
+        Embedding queryEmbedding = embeddingModel.embed(queryToEmbed).content();
         context.setQueryEmbedding(queryEmbedding);
 
         // 2. Xây dựng bộ lọc Metadata
