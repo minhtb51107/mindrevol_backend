@@ -1,42 +1,44 @@
 package com.example.demo.service.chat.guardrail;
 
-import com.example.demo.service.chat.guardrail.validators.PiiGuardrail;
-import com.example.demo.service.chat.guardrail.validators.TopicGuardrail;
+import io.micrometer.core.instrument.MeterRegistry; // <-- 1. Import MeterRegistry
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+import java.util.stream.Collectors;
 
 @Service
 @Slf4j
 public class GuardrailManager {
 
-    private final List<Guardrail> inputGuardrails;
-    private final List<Guardrail> outputGuardrails;
+    private final List<Guardrail> allGuardrails; // <-- Giữ một danh sách tất cả guardrail
+    private final MeterRegistry meterRegistry;   // <-- 2. Thêm MeterRegistry làm dependency
 
-    // Tự động tiêm (inject) các bean Guardrail đã được định nghĩa
     @Autowired
-    public GuardrailManager(PiiGuardrail piiGuardrail, TopicGuardrail topicGuardrail) {
-        // Định nghĩa các quy tắc áp dụng cho đầu vào của người dùng
-        this.inputGuardrails = List.of(piiGuardrail, topicGuardrail);
-        
-        // Định nghĩa các quy tắc áp dụng cho đầu ra của LLM
-        // Ví dụ: Không cần kiểm tra PII ở đầu ra vì LLM không nên tạo ra nó
-        this.outputGuardrails = List.of(topicGuardrail);
+    public GuardrailManager(List<Guardrail> allGuardrails, MeterRegistry meterRegistry) {
+        this.allGuardrails = allGuardrails;
+        this.meterRegistry = meterRegistry;
     }
 
     /**
      * Chạy pipeline kiểm tra cho đầu vào của người dùng.
      */
     public String checkInput(String userInput) {
-        return executeChecks(userInput, inputGuardrails, "Input");
+        // Bạn có thể lọc các guardrail cần thiết cho đầu vào ở đây
+        // Ví dụ: List<Guardrail> inputGuardrails = allGuardrails.stream()...
+        return executeChecks(userInput, allGuardrails, "Input");
     }
 
     /**
      * Chạy pipeline kiểm tra cho đầu ra của LLM.
      */
     public String checkOutput(String llmResponse) {
+        // Tương tự, lọc các guardrail cho đầu ra
+        // Ví dụ, loại bỏ PiiGuardrail cho đầu ra
+        List<Guardrail> outputGuardrails = allGuardrails.stream()
+                .filter(g -> !(g instanceof com.example.demo.service.chat.guardrail.validators.PiiGuardrail))
+                .collect(Collectors.toList());
         return executeChecks(llmResponse, outputGuardrails, "Output");
     }
 
@@ -47,6 +49,18 @@ public class GuardrailManager {
                 sanitizedContent = guardrail.check(sanitizedContent);
             } catch (GuardrailViolationException e) {
                 log.warn("{} guardrail violation detected by {}: {}", type, guardrail.getClass().getSimpleName(), e.getMessage());
+
+                // --- BƯỚC 4: THÊM BỘ ĐẾM METRIC ---
+                // Ghi nhận metric mỗi khi một guardrail phát hiện vi phạm.
+                // Metric này sẽ có tên là "guardrail.violations" và có 2 tag (nhãn):
+                // - "name": Tên của lớp Guardrail (ví dụ: "PiiGuardrail")
+                // - "type": Loại kiểm tra ("Input" hoặc "Output")
+                meterRegistry.counter("guardrail.violations",
+                    "name", guardrail.getClass().getSimpleName(),
+                    "type", type
+                ).increment();
+                // ------------------------------------
+
                 // Khi có vi phạm, trả về một thông báo an toàn và dừng pipeline
                 return "Rất tiếc, tôi không thể xử lý yêu cầu này vì lý do an toàn và bảo mật.";
             }

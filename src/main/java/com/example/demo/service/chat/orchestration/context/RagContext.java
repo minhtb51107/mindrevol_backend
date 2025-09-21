@@ -19,11 +19,13 @@ import java.util.Map;
 public class RagContext {
 
     // --- Đầu vào ban đầu ---
-    private String initialQuery; // <-- MODIFIED: Đã xóa 'final'
+    private String initialQuery;
     private final User user;
     private final ChatSession session;
     private final ChatMemory chatMemory;
     private final String tempFileId;
+    
+    private String pipelineName; // <-- THÊM THUỘC TÍNH NÀY ĐỂ SỬA LỖI
 
     // --- Dữ liệu được xử lý qua các bước ---
 

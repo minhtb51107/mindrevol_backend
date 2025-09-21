@@ -1,14 +1,17 @@
+# Cấu hình pipeline mặc định
+app:
+  default-pipeline-name: "default-rag"
+
+# Loại bỏ cấp "definitions" thừa
 pipelines:
-  definitions: # <-- THÊM DÒNG NÀY
-    # Tên pipeline (lùi vào 1 cấp)
-    default-rag:
-      # Danh sách các step theo đúng thứ tự thực thi
-      steps:
-        - retrieval
-        - reranking
-        - generation
-    # Một pipeline khác để thử nghiệm (lùi vào 1 cấp)
-    simple-rag:
-      steps:
-        - retrieval
-        - generation
+  default-rag:
+    steps:
+      - retrieval
+      - reranking
+      - generation
+  simple-rag:
+    steps:
+      - retrieval
+      - generation
+
+# ... các cấu hình khác của bạn

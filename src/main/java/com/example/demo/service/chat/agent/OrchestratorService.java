@@ -1,8 +1,15 @@
 package com.example.demo.service.chat.agent;
 
-import com.example.demo.service.chat.guardrail.GuardrailManager; // <-- MODIFIED: Import GuardrailManager
+import com.example.demo.model.chat.ChatMessage;
+import com.example.demo.model.chat.ChatSession;
+import com.example.demo.service.chat.ChatMessageService; // <-- 1. Import service cần thiết
+import com.example.demo.service.chat.guardrail.GuardrailManager;
 import com.example.demo.service.chat.orchestration.context.RagContext;
+import dev.langchain4j.data.message.AiMessage;
+import dev.langchain4j.data.message.UserMessage;
+import dev.langchain4j.memory.ChatMemory;
 import dev.langchain4j.model.chat.ChatLanguageModel;
+import io.micrometer.core.instrument.MeterRegistry;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
@@ -18,15 +25,22 @@ public class OrchestratorService {
     private final Map<String, Agent> agents;
     private final ChatLanguageModel chatLanguageModel;
     private final Agent defaultAgent;
-    private final GuardrailManager guardrailManager; // <-- MODIFIED: Add GuardrailManager field
+    private final GuardrailManager guardrailManager;
+    private final MeterRegistry meterRegistry;
+    private final ChatMessageService chatMessageService; // <-- 2. Inject ChatMessageService
 
-    // <-- MODIFIED: Add GuardrailManager to the constructor
-    public OrchestratorService(List<Agent> agentList, ChatLanguageModel chatLanguageModel, GuardrailManager guardrailManager) {
+    public OrchestratorService(List<Agent> agentList,
+                               ChatLanguageModel chatLanguageModel,
+                               GuardrailManager guardrailManager,
+                               MeterRegistry meterRegistry,
+                               ChatMessageService chatMessageService) { // <-- Thêm vào constructor
         this.agents = agentList.stream()
                 .collect(Collectors.toMap(Agent::getName, Function.identity()));
         this.chatLanguageModel = chatLanguageModel;
-        this.guardrailManager = guardrailManager; // <-- MODIFIED: Initialize the field
-        this.defaultAgent = this.agents.get("RAGAgent"); // Set RAGAgent as the default fallback
+        this.guardrailManager = guardrailManager;
+        this.meterRegistry = meterRegistry;
+        this.chatMessageService = chatMessageService; // <-- Khởi tạo
+        this.defaultAgent = this.agents.get("RAGAgent");
 
         if (this.defaultAgent == null) {
             throw new IllegalStateException("A default agent with the name 'RAGAgent' must be available.");
@@ -35,63 +49,90 @@ public class OrchestratorService {
     }
 
     public String orchestrate(RagContext context) {
+        // Giữ lại query gốc để lưu trữ
         final String originalUserInput = context.getInitialQuery();
 
-        // ==========================================================
-        // BƯỚC 1: KIỂM TRA ĐẦU VÀO (INPUT GUARDRAILS)
-        // ==========================================================
+        // BƯỚC 1: KIỂM TRA ĐẦU VÀO
         log.info("Checking user input against guardrails...");
         String safeUserInput = guardrailManager.checkInput(originalUserInput);
-
-        // Nếu đầu vào không an toàn, trả về thông báo và dừng lại
         if (!safeUserInput.equals(originalUserInput)) {
-            log.warn("Input guardrail violation detected. Original input: [{}]. Returning safe response.", originalUserInput);
-            // Không cần cập nhật context vì chúng ta trả về ngay lập tức
+            log.warn("Input guardrail violation detected. Returning safe response.");
             return safeUserInput;
         }
         log.info("Input guardrails passed.");
-        
-        // Cập nhật context với đầu vào đã được làm sạch để các bước sau sử dụng
         context.setInitialQuery(safeUserInput);
 
-
-        // ==========================================================
-        // BƯỚC 2: LOGIC CHỌN AGENT (NHƯ CŨ)
-        // ==========================================================
-        
-        // 2.1. Build the prompt for the orchestrator LLM, now using the safe input
-        String prompt = buildOrchestratorPrompt(safeUserInput);
-
-        // 2.2. Call the LLM to choose the appropriate agent
-        String chosenAgentName = chatLanguageModel.generate(prompt).trim();
-        log.debug("Orchestrator LLM chose agent: '{}'", chosenAgentName);
-
-        // 2.3. Get the chosen agent and execute it
-        Agent chosenAgent = agents.get(chosenAgentName);
-
-        RagContext finalContext;
-        if (chosenAgent != null) {
-            // Agent sẽ thực thi với context chứa `safeUserInput`
-            finalContext = chosenAgent.execute(context);
-        } else {
-            log.warn("Could not find agent named '{}'. Falling back to default agent '{}'.",
-                    chosenAgentName, defaultAgent.getName());
-            finalContext = defaultAgent.execute(context);
-        }
-        
+        // BƯỚC 2: CHỌN AGENT VÀ THỰC THI
+        Agent chosenAgent = chooseAgent(safeUserInput);
+        RagContext finalContext = chosenAgent.execute(context);
         String llmResponse = finalContext.getReply();
 
-        // ==========================================================
-        // BƯỚC 3: KIỂM TRA ĐẦU RA (OUTPUT GUARDRAILS)
-        // ==========================================================
+        // BƯỚC 3: KIỂM TRA ĐẦU RA
         log.info("Checking LLM output against guardrails...");
         String safeResponse = guardrailManager.checkOutput(llmResponse);
         log.info("Output guardrails passed.");
 
+        // --- BƯỚC 4: LƯU LẠI CUỘC TRÒ CHUYỆN (FIX) ---
+        persistConversation(finalContext, originalUserInput, safeResponse);
+        // ---------------------------------------------
+
         return safeResponse;
     }
 
+    private Agent chooseAgent(String safeUserInput) {
+        String prompt = buildOrchestratorPrompt(safeUserInput);
+        String chosenAgentName = chatLanguageModel.generate(prompt).trim();
+        log.debug("Orchestrator LLM chose agent: '{}'", chosenAgentName);
+
+        Agent chosenAgent = agents.get(chosenAgentName);
+        boolean isFallback = false;
+
+        if (chosenAgent == null) {
+            log.warn("Could not find agent named '{}'. Falling back to default agent '{}'.",
+                    chosenAgentName, defaultAgent.getName());
+            chosenAgent = defaultAgent;
+            isFallback = true;
+        }
+
+        meterRegistry.counter("agent.selected",
+            "name", chosenAgent.getName(),
+            "fallback", String.valueOf(isFallback)
+        ).increment();
+
+        return chosenAgent;
+    }
+    
+    /**
+     * Phương thức mới để lưu tin nhắn vào DB và cập nhật bộ nhớ.
+     */
+    private void persistConversation(RagContext context, String userQuery, String aiReply) {
+        try {
+            ChatSession session = context.getSession();
+            if (session == null) {
+                log.warn("Cannot persist conversation, session is null.");
+                return;
+            }
+
+            // Cập nhật đối tượng ChatMemory trong bộ nhớ của ứng dụng
+            ChatMemory chatMemory = context.getChatMemory();
+            chatMemory.add(UserMessage.from(userQuery));
+            chatMemory.add(AiMessage.from(aiReply));
+
+            // Lưu vào cơ sở dữ liệu (PostgreSQL) để đảm bảo tính bền vững
+            chatMessageService.saveMessage(session, "user", userQuery);
+            chatMessageService.saveMessage(session, "assistant", aiReply);
+
+            log.info("Successfully persisted conversation for session {}", session.getId());
+        } catch (Exception e) {
+            log.error("Failed to persist conversation for session {}: {}",
+                    context.getSession() != null ? context.getSession().getId() : "null",
+                    e.getMessage(), e);
+        }
+    }
+
+
     private String buildOrchestratorPrompt(String userInput) {
+        // ... (phần này giữ nguyên không đổi)
         StringBuilder promptBuilder = new StringBuilder();
         promptBuilder.append("You are an expert AI routing system. Your task is to analyze the user's query and select the best specialized agent to handle it.\n");
         promptBuilder.append("Respond ONLY with the name of the chosen agent. Do not add any explanation or punctuation.\n\n");
