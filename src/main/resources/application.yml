@@ -15,3 +15,10 @@ pipelines:
       - generation
 
 # ... các cấu hình khác của bạn
+
+# 👇 ADD THIS CONFIGURATION
+spring:
+  data:
+    redis:
+      repositories:
+        enabled: false

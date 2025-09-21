@@ -4,6 +4,8 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.scheduling.annotation.EnableAsync;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
+import org.springframework.security.task.DelegatingSecurityContextAsyncTaskExecutor;
+import org.springframework.core.task.AsyncTaskExecutor;
 import org.springframework.core.task.TaskExecutor;
 
 import java.util.concurrent.Executor;
@@ -25,7 +27,20 @@ public class AsyncConfig {
         executor.initialize();
         return executor;
     }
-
+    
+    // --- THÊM BEAN MỚI NÀY ĐỂ SỬA LỖI ---
+    /**
+     * Tạo một executor "bọc" (wrapper) xung quanh chatTaskExecutor.
+     * DelegatingSecurityContextAsyncTaskExecutor sẽ tự động sao chép
+     * SecurityContext từ luồng web sang luồng async, giải quyết lỗi Access Denied.
+     * * ChatAIService sẽ sử dụng bean này thay vì bean cũ.
+     */
+    @Bean("secureChatTaskExecutor")
+    public Executor secureChatTaskExecutor() {
+        // This now correctly uses the chatTaskExecutor bean defined above
+        return new DelegatingSecurityContextAsyncTaskExecutor((AsyncTaskExecutor) chatTaskExecutor());
+    }
+    
     // ✅ Executor cho I/O operations (DB, Redis, API calls)
     @Bean("ioTaskExecutor")
     public TaskExecutor ioTaskExecutor() {

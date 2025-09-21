@@ -51,6 +51,7 @@ public class SecurityConfig {
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/api/auth/**").permitAll() // login/register
                 .requestMatchers("/api/sessions/users/me").authenticated() // 👈 cho phép nếu đã xác thực
+                .requestMatchers("/api/chat/**").authenticated() 
                 .anyRequest().authenticated()
             )
             .sessionManagement(sess -> sess.sessionCreationPolicy(SessionCreationPolicy.STATELESS))

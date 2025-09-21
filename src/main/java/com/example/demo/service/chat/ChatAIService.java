@@ -85,7 +85,7 @@ public class ChatAIService {
      * Phương thức MỚI để xử lý yêu cầu chat streaming.
      * Chạy trên một luồng riêng để không block request HTTP ban đầu.
      */
-    @Async("chatTaskExecutor")
+    @Async("secureChatTaskExecutor")
     public void processStreamMessages(Long sessionId, String prompt, MultipartFile file, User user, SseEmitter emitter) {
         try {
             // Logic chuẩn bị session, memory, file tương tự như phương thức đồng bộ
