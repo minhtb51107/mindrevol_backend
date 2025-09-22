@@ -34,6 +34,18 @@ public class ChatSessionService {
     private final ChatMessageRepository chatMessageRepository;
     private final DocumentIngestionService documentIngestionService;
 
+    // ✅ BẮT ĐẦU THÊM CODE MỚI
+    /**
+     * Tìm một session dựa trên String ID hoặc tạo mới nếu không tồn tại.
+     * Dùng cho các kịch bản như evaluation, nơi session ID có thể là UUID.
+     * Vì mục đích của evaluation là độc lập, chúng ta sẽ luôn tạo session mới.
+     */
+    public ChatSession findOrCreateSession(String externalSessionId, User user) {
+        // Đối với evaluation, ta luôn tạo một session mới để đảm bảo các lần chạy độc lập
+        return createSession(user, "Evaluation Session - " + externalSessionId);
+    }
+    // ✅ KẾT THÚC THÊM CODE MỚI
+
     public ChatSession createSession(User user, String title) {
         ChatSession session = ChatSession.builder()
             .title(title)

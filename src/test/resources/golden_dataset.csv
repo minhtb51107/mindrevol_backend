@@ -1,0 +1,4 @@
+question,ideal_answer
+"Dự án này dùng công nghệ gì?","Dự án được xây dựng bằng Java và Spring Boot, sử dụng Gradle làm công cụ build. Về phần AI, dự án tích hợp với LangChain4j để làm việc với các mô hình ngôn ngữ lớn."
+"Làm thế nào để chạy dự án?","Để chạy dự án, bạn có thể sử dụng lệnh './gradlew bootRun' từ thư mục gốc."
+"RAG là gì?","RAG (Retrieval-Augmented Generation) là một kỹ thuật AI kết hợp việc truy xuất thông tin từ một cơ sở tri thức với khả năng sinh văn bản của các mô hình ngôn ngữ lớn để tạo ra câu trả lời chính xác và phù hợp với ngữ cảnh hơn."

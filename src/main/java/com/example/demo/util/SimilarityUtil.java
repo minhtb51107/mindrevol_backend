@@ -1,21 +1,21 @@
-//package com.example.demo.util;
-//
-//import java.util.List;
-//
-//public class SimilarityUtil {
-//    public static double cosineSimilarity(List<Float> vec1, List<Float> vec2) {
-//        if (vec1.size() != vec2.size()) throw new IllegalArgumentException("Vector size mismatch");
-//
-//        double dot = 0.0;
-//        double normA = 0.0;
-//        double normB = 0.0;
-//
-//        for (int i = 0; i < vec1.size(); i++) {
-//            dot += vec1.get(i) * vec2.get(i);
-//            normA += Math.pow(vec1.get(i), 2);
-//            normB += Math.pow(vec2.get(i), 2);
-//        }
-//
-//        return dot / (Math.sqrt(normA) * Math.sqrt(normB));
-//    }
-//}
+package com.example.demo.util;
+
+import java.util.List;
+
+public class SimilarityUtil {
+	// Trong com.example.demo.util.SimilarityUtil
+	public static double cosineSimilarity(float[] vectorA, float[] vectorB) {
+	    double dotProduct = 0.0;
+	    double normA = 0.0;
+	    double normB = 0.0;
+	    for (int i = 0; i < vectorA.length; i++) {
+	        dotProduct += vectorA[i] * vectorB[i];
+	        normA += Math.pow(vectorA[i], 2);
+	        normB += Math.pow(vectorB[i], 2);
+	    }
+	    if (normA == 0 || normB == 0) {
+	        return 0.0;
+	    }
+	    return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
+	}
+}
