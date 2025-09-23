@@ -9,14 +9,16 @@ import dev.langchain4j.store.embedding.CosineSimilarity;
 
 import java.text.BreakIterator;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
-import java.util.stream.Collectors; // ✅ THÊM IMPORT
+import java.util.stream.Collectors;
 
 public class SemanticDocumentSplitter implements DocumentSplitter {
 
     private final EmbeddingModel embeddingModel;
     private final double similarityThreshold;
+    private static final int MAX_CHUNK_SIZE = 512; // Đặt kích thước chunk tối đa (ví dụ)
 
     public SemanticDocumentSplitter(EmbeddingModel embeddingModel, double similarityThreshold) {
         this.embeddingModel = embeddingModel;
@@ -25,24 +27,41 @@ public class SemanticDocumentSplitter implements DocumentSplitter {
 
     @Override
     public List<TextSegment> split(Document document) {
-        List<TextSegment> chunks = new ArrayList<>();
+        List<TextSegment> finalChunks = new ArrayList<>();
         String text = document.text();
 
-        // 1. Tách văn bản thành các câu
-        List<String> sentences = splitIntoSentences(text);
+        // 1. Tách văn bản thành các đoạn văn dựa trên dấu xuống dòng kép
+        List<String> paragraphs = Arrays.asList(text.split("\\n\\s*\\n"));
+
+        for (String paragraph : paragraphs) {
+            if (paragraph.trim().isEmpty()) {
+                continue;
+            }
+            // Nếu đoạn văn đủ nhỏ, coi nó là một chunk
+            if (paragraph.length() <= MAX_CHUNK_SIZE) {
+                finalChunks.add(TextSegment.from(paragraph, document.metadata()));
+            } else {
+                // Nếu đoạn văn quá lớn, áp dụng logic chia theo câu
+                finalChunks.addAll(splitParagraphIntoSentenceChunks(paragraph, document));
+            }
+        }
+
+        return finalChunks;
+    }
+
+    private List<TextSegment> splitParagraphIntoSentenceChunks(String paragraph, Document document) {
+        List<TextSegment> chunks = new ArrayList<>();
+        List<String> sentences = splitIntoSentences(paragraph);
         if (sentences.isEmpty()) {
             return chunks;
         }
 
-        // ✅ SỬA LỖI: Chuyển đổi List<String> thành List<TextSegment>
         List<TextSegment> sentenceSegments = sentences.stream()
                                                       .map(TextSegment::from)
                                                       .collect(Collectors.toList());
 
-        // 2. Tạo embedding cho mỗi câu từ List<TextSegment>
         List<Embedding> sentenceEmbeddings = embeddingModel.embedAll(sentenceSegments).content();
 
-        // 3. Nhóm các câu thành chunk dựa trên độ tương đồng
         StringBuilder currentChunkContent = new StringBuilder(sentences.get(0));
         Embedding lastEmbedding = sentenceEmbeddings.get(0);
 
@@ -50,10 +69,10 @@ public class SemanticDocumentSplitter implements DocumentSplitter {
             String currentSentence = sentences.get(i);
             Embedding currentEmbedding = sentenceEmbeddings.get(i);
 
-            // 4. So sánh độ tương đồng (cosine similarity)
             double similarity = CosineSimilarity.between(lastEmbedding, currentEmbedding);
 
-            if (similarity >= similarityThreshold) {
+            // Thêm điều kiện kiểm tra kích thước chunk
+            if (similarity >= similarityThreshold && (currentChunkContent.length() + currentSentence.length()) < MAX_CHUNK_SIZE) {
                 currentChunkContent.append(" ").append(currentSentence);
             } else {
                 chunks.add(TextSegment.from(currentChunkContent.toString(), document.metadata()));
@@ -62,9 +81,7 @@ public class SemanticDocumentSplitter implements DocumentSplitter {
             lastEmbedding = currentEmbedding;
         }
 
-        // Thêm chunk cuối cùng vào danh sách
         chunks.add(TextSegment.from(currentChunkContent.toString(), document.metadata()));
-
         return chunks;
     }
 
