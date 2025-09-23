@@ -20,6 +20,8 @@ import dev.langchain4j.store.embedding.filter.logical.And;
 import dev.langchain4j.store.embedding.filter.logical.Or;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Service;
@@ -40,6 +42,10 @@ public class RetrievalStep implements PipelineStep<RetrievalStepResult> {
     private final JdbcTemplate jdbcTemplate;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
+    // Thêm @Value để có thể cấu hình từ application.yml
+    @Value("${retrieval.max-results:50}")
+    private int maxResults;
+
     @Override
     public String getStepName() {
         return "retrieval";
@@ -57,19 +63,20 @@ public class RetrievalStep implements PipelineStep<RetrievalStepResult> {
         Embedding queryEmbedding = embeddingModel.embed(queryToEmbed).content();
         Filter finalFilter = buildFilter(context);
 
-        // 1. Vector Search (Semantic)
+        // 1. Vector Search (Semantic) - SỬ DỤNG GIÁ TRỊ CẤU HÌNH
         EmbeddingSearchRequest vectorRequest = EmbeddingSearchRequest.builder()
                 .queryEmbedding(queryEmbedding)
-                .maxResults(15)
+                .maxResults(maxResults) // ✅ THAY ĐỔI TỪ 15
                 .filter(finalFilter)
                 .build();
         EmbeddingSearchResult<TextSegment> vectorSearchResult = embeddingStore.search(vectorRequest);
         log.info("Vector search found {} results.", vectorSearchResult.matches().size());
 
-        // 2. Keyword Search (Full-Text)
-        List<EmbeddingMatch<TextSegment>> keywordMatches = searchByKeyword(queryToEmbed, finalFilter, 15);
+        // 2. Keyword Search (Full-Text) - SỬ DỤNG GIÁ TRỊ CẤU HÌNH
+        List<EmbeddingMatch<TextSegment>> keywordMatches = searchByKeyword(queryToEmbed, finalFilter, maxResults); // ✅ THAY ĐỔI TỪ 15
         log.info("Keyword search found {} results.", keywordMatches.size());
 
+        // ... (phần còn lại của phương thức không đổi)
         // 3. Kết hợp, loại bỏ trùng lặp và xếp hạng lại
         List<EmbeddingMatch<TextSegment>> combinedMatches = Stream.concat(
                         vectorSearchResult.matches().stream(),
@@ -81,7 +88,6 @@ public class RetrievalStep implements PipelineStep<RetrievalStepResult> {
                         (match1, match2) -> match1.score() >= match2.score() ? match1 : match2
                 ))
                 .values().stream()
-                // ✅ SỬA LỖI DỨT ĐIỂM: Chỉ định rõ ràng kiểu dữ liệu để trình biên dịch không bị nhầm lẫn
                 .sorted(Comparator.comparingDouble((EmbeddingMatch<?> match) -> match.score()).reversed())
                 .collect(Collectors.toList());
 

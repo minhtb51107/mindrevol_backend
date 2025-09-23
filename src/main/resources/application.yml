@@ -15,7 +15,9 @@ pipelines:
       - generation
 
 # ... các cấu hình khác của bạn
-
+# Thêm cấu hình cho bước retrieval
+retrieval:
+  max-results: 50 # Số lượng tài liệu tối đa lấy ra để đưa cho reranker
 # 👇 ADD THIS CONFIGURATION
 spring:
   data:
