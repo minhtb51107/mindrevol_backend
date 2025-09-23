@@ -10,10 +10,12 @@ import lombok.NonNull;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.security.core.userdetails.*;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
+import org.springframework.util.StringUtils;
 
 import java.io.IOException;
 import java.util.Arrays;
@@ -27,26 +29,30 @@ public class JwtAuthFilter extends OncePerRequestFilter {
 
     @Autowired
     private UserDetailsService userDetailsService;
-    
-    // ✅ BƯỚC 1: Thêm danh sách các đường dẫn công khai
+
+    // ✅ BƯỚC 1: Xác định danh sách các đường dẫn công khai không cần kiểm tra JWT.
+    // Bạn có thể thêm các đường dẫn khác vào đây, ví dụ: "/v3/api-docs/**", "/swagger-ui/**"
     private final List<String> publicPaths = Arrays.asList("/api/auth");
 
-    // ✅ BƯỚC 2: Ghi đè phương thức này
+    // ✅ BƯỚC 2: Ghi đè phương thức shouldNotFilter.
+    // Phương thức này sẽ quyết định xem filter có nên được thực thi hay không.
     @Override
     protected boolean shouldNotFilter(@NonNull HttpServletRequest request) throws ServletException {
         String path = request.getRequestURI();
+        // Trả về true (bỏ qua filter) nếu đường dẫn của request bắt đầu bằng một trong các publicPaths.
         return publicPaths.stream().anyMatch(p -> path.startsWith(p));
     }
 
     @Override
     protected void doFilterInternal(HttpServletRequest request,
-                                    HttpServletResponse response,
-                                    FilterChain filterChain)
+                                    @NonNull HttpServletResponse response,
+                                    @NonNull FilterChain filterChain)
                                     throws ServletException, IOException {
 
         final String authHeader = request.getHeader("Authorization");
 
-        if (authHeader != null && authHeader.startsWith("Bearer ")) {
+        // Chỉ xử lý nếu header tồn tại, bắt đầu bằng "Bearer " và có nội dung token.
+        if (StringUtils.hasText(authHeader) && authHeader.startsWith("Bearer ")) {
             final String token = authHeader.substring(7);
             final String username = jwtUtil.extractUsername(token);
 
@@ -65,75 +71,7 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             }
         }
 
-        // ⚠️ Đoạn này nếu đỏ → kiểm tra import và tên phương thức
+        // Chuyển tiếp request và response cho filter tiếp theo trong chuỗi.
         filterChain.doFilter(request, response);
     }
 }
-
-//package com.example.demo.security;
-//
-//import com.example.demo.util.JwtUtil;
-//import jakarta.servlet.FilterChain;
-//import jakarta.servlet.ServletException;
-//import jakarta.servlet.http.HttpServletRequest;
-//import jakarta.servlet.http.HttpServletResponse;
-//
-//import org.springframework.beans.factory.annotation.Autowired;
-//import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-//import org.springframework.security.core.context.SecurityContextHolder;
-//import org.springframework.security.core.userdetails.*;
-//import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
-//import org.springframework.stereotype.Component;
-//import org.springframework.web.filter.OncePerRequestFilter;
-//
-//import java.io.IOException;
-//
-//@Component
-//public class JwtAuthFilter extends OncePerRequestFilter {
-//
-//    @Autowired
-//    private JwtUtil jwtUtil;
-//
-//    @Autowired
-//    private UserDetailsService userDetailsService;
-//
-//    @Override
-//    protected void doFilterInternal(HttpServletRequest request,
-//                                    HttpServletResponse response,
-//                                    FilterChain filterChain)
-//                                    throws ServletException, IOException {
-//
-//        // 🔍 THÊM LOG 1: In ra path và header
-//        String requestPath = request.getServletPath();
-//        String authHeader = request.getHeader("Authorization");
-//        System.out.println("=== JwtAuthFilter DEBUG ===");
-//        System.out.println("Request Path: " + requestPath);
-//        System.out.println("Authorization Header: '" + authHeader + "'");
-//
-//        // 🔍 THÊM LOG 2: Kiểm tra nếu request đến public endpoint
-//        // (Tạm thời ko sửa logic, chỉ để log kiểm tra)
-//        if (requestPath.startsWith("/api/auth/")) {
-//            System.out.println("⚠️  NHẬN DIỆN: Đây là public endpoint. Filter vẫn chạy (sẽ gây lỗi nếu header không hợp lệ).");
-//        }
-//
-//        if (authHeader != null && authHeader.startsWith("Bearer ")) {
-//            final String token = authHeader.substring(7); // Cắt lấy chữ "Bearer "
-//            // 🔍 THÊM LOG 3: In ra token trước khi parse
-//            System.out.println("Token extracted: '" + token + "'");
-//            System.out.println("Token length: " + token.length());
-//            // 🔍 THÊM LOG 4: Kiểm tra số dấu chấm trong token
-//            int dotCount = token.length() - token.replace(".", "").length();
-//            System.out.println("Number of '.' in token: " + dotCount);
-//
-//            final String username = jwtUtil.extractUsername(token); // 👈 Dòng 38, nơi xảy ra lỗi
-//            // ... (phần còn lại của code) ...
-//        } else {
-//            System.out.println("ℹ️  Không tìm thấy Authorization header hoặc header không bắt đầu bằng 'Bearer '.");
-//        }
-//
-//        System.out.println("=== END JwtAuthFilter DEBUG ===");
-//
-//        // ⚠️ Đoạn này nếu đỏ → kiểm tra import và tên phương thức
-//        filterChain.doFilter(request, response);
-//    }
-//}

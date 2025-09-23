@@ -7,6 +7,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
+import org.springframework.security.authentication.AuthenticationProvider;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
@@ -35,6 +36,8 @@ public class SecurityConfig {
     private final JwtUtil jwtUtil;
     private final MyUserDetailsService myUserDetailsService;
     private final JwtAuthFilter jwtAuthenticationFilter;
+    private final AuthenticationProvider authenticationProvider;
+
 
     @Autowired
     private JwtAuthFilter jwtAuthFilter;
@@ -47,18 +50,27 @@ public class SecurityConfig {
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
-        return http
-        	.cors(Customizer.withDefaults()) // 👈 THÊM DÒNG NÀY
-            .csrf(csrf -> csrf.disable())
+        http
+            .csrf(csrf -> csrf.disable()) // Vô hiệu hóa CSRF (thường làm với API)
             .authorizeHttpRequests(auth -> auth
-                .requestMatchers("/api/auth/**").permitAll() // login/register
-                .requestMatchers("/api/sessions/users/me").authenticated() // 👈 cho phép nếu đã xác thực
-                .requestMatchers("/api/chat/**").authenticated() 
+                // 👇 Dòng này cho phép tất cả các request đến /api/auth/** mà không cần xác thực
+                .requestMatchers("/api/auth/**").permitAll()
+                
+                // 👇 (Tùy chọn) Thêm các đường dẫn công khai khác nếu cần
+                // .requestMatchers("/public/**", "/swagger-ui/**", "/v3/api-docs/**").permitAll()
+
+                // 👇 Tất cả các request khác đều yêu cầu xác thực
                 .anyRequest().authenticated()
             )
-            .sessionManagement(sess -> sess.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-            .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
-            .build();
+            .sessionManagement(session -> session
+                // Cấu hình không sử dụng session (stateless) vì chúng ta dùng JWT
+                .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
+            )
+            .authenticationProvider(authenticationProvider)
+            // Thêm JwtAuthFilter vào trước filter UsernamePasswordAuthenticationFilter
+            .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
+
+        return http.build();
     }
 }
 
