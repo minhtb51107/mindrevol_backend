@@ -1,3 +1,7 @@
-question,expected_answer
-"Dịch vụ của bạn là gì?","Chúng tôi là một nền tảng cung cấp giải pháp AI cho doanh nghiệp."
-"Làm thế nào để liên hệ hỗ trợ?","Bạn có thể liên hệ qua email support@example.com hoặc số điện thoại 123-456-789."
+question,expected_answer,expected_agent,context,ground_truth
+"Dịch vụ của bạn là gì?","Chúng tôi là một nền tảng cung cấp giải pháp AI cho doanh nghiệp.","RAGAgent","[Cung cấp đoạn văn bản liên quan từ tài liệu]","Chúng tôi là một nền tảng cung cấp giải pháp AI cho doanh nghiệp."
+"Làm thế nào để liên hệ hỗ trợ?","Bạn có thể liên hệ qua email support@example.com hoặc số điện thoại 123-456-789.","RAGAgent","[Cung cấp đoạn văn bản liên quan từ tài liệu]","Bạn có thể liên hệ qua email support@example.com hoặc số điện thoại 123-456-789."
+"Bạn vừa nhắc đến giải pháp gì vậy?","Tôi vừa đề cập đến giải pháp AI cho doanh nghiệp.","MemoryQueryAgent","[Lịch sử chat có câu trả lời trước đó]","Tôi vừa đề cập đến giải pháp AI cho doanh nghiệp."
+"Cảm ơn bạn nhé","Không có gì ạ! Tôi có thể giúp gì thêm cho bạn không?","ChitChatAgent","","Không có gì ạ! Tôi có thể giúp gì thêm cho bạn không?"
+"Thời tiết hôm nay thế nào?","Xin lỗi, tôi không thể cung cấp thông tin về thời tiết. Tôi chỉ có thể trả lời các câu hỏi liên quan đến dịch vụ của chúng tôi.","RAGAgent","","Xin lỗi, tôi không thể cung cấp thông tin về thời tiết."
+"phân tích ưu và nhược điểm của sản phẩm A so với B","Sản phẩm A có ưu điểm là... trong khi sản phẩm B mạnh về...","RAGAgent","[Cung cấp tài liệu so sánh sản phẩm A và B]","Sản phẩm A có ưu điểm... còn sản phẩm B..."

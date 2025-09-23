@@ -1,11 +1,12 @@
 package com.example.demo.service.chat.agent;
 
 import com.example.demo.service.chat.guardrail.GuardrailManager;
-import com.example.demo.service.chat.integration.TrackedChatLanguageModel; // ✅ 1. Import service mới
+import com.example.demo.service.chat.integration.TrackedChatLanguageModel;
 import com.example.demo.service.chat.orchestration.context.RagContext;
-import dev.langchain4j.data.message.AiMessage; // ✅ 2. Import AiMessage
-import dev.langchain4j.data.message.UserMessage; // ✅ 2. Import UserMessage
-import dev.langchain4j.model.output.Response; // ✅ 2. Import Response
+import com.example.demo.service.chat.orchestration.rules.QueryRouterService; // ✅ 1. Import QueryRouterService
+import dev.langchain4j.data.message.AiMessage;
+import dev.langchain4j.data.message.UserMessage;
+import dev.langchain4j.model.output.Response;
 import io.micrometer.core.instrument.MeterRegistry;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.retry.annotation.Backoff;
@@ -25,22 +26,24 @@ import java.util.stream.Collectors;
 public class OrchestratorService {
 
     private final Map<String, Agent> agents;
-    // ✅ 3. Thay thế ChatLanguageModel bằng TrackedChatLanguageModel
     private final TrackedChatLanguageModel trackedChatLanguageModel;
     private final Agent defaultAgent;
     private final GuardrailManager guardrailManager;
     private final MeterRegistry meterRegistry;
+    private final QueryRouterService queryRouterService; // ✅ 2. Thêm QueryRouterService làm dependency
 
-    // ✅ 4. Cập nhật Constructor
+    // ✅ 3. Cập nhật Constructor để nhận QueryRouterService
     public OrchestratorService(List<Agent> agentList,
-                               TrackedChatLanguageModel trackedChatLanguageModel, // Thay đổi ở đây
+                               TrackedChatLanguageModel trackedChatLanguageModel,
                                GuardrailManager guardrailManager,
-                               MeterRegistry meterRegistry) {
+                               MeterRegistry meterRegistry,
+                               QueryRouterService queryRouterService) { // Thêm vào đây
         this.agents = agentList.stream()
                 .collect(Collectors.toMap(Agent::getName, Function.identity()));
-        this.trackedChatLanguageModel = trackedChatLanguageModel; // Thay đổi ở đây
+        this.trackedChatLanguageModel = trackedChatLanguageModel;
         this.guardrailManager = guardrailManager;
         this.meterRegistry = meterRegistry;
+        this.queryRouterService = queryRouterService; // Khởi tạo service
         this.defaultAgent = this.agents.get("RAGAgent");
         log.info("Orchestrator initialized with {} agents: {}", agents.size(), agents.keySet());
     }
@@ -56,10 +59,9 @@ public class OrchestratorService {
             }
             context.setInitialQuery(safeUserInput);
 
-            // ✅ 5. Truyền toàn bộ context vào chooseAgent
             Agent chosenAgent = chooseAgent(context);
             RagContext finalContext = chosenAgent.execute(context);
-            
+
             return finalContext.getReply();
 
         } catch (Exception e) {
@@ -82,18 +84,36 @@ public class OrchestratorService {
         maxAttempts = 3,
         backoff = @Backoff(delay = 2000)
     )
-    // ✅ 6. Sửa đổi phương thức chooseAgent để nhận RagContext
+    // ✅ 4. Cập nhật toàn bộ phương thức chooseAgent với logic mới
     private Agent chooseAgent(RagContext context) {
+        // --- LOGIC MỚI BẮT ĐẦU TỪ ĐÂY ---
+
+        // Bước 1: Phân loại câu hỏi trước
+        QueryRouterService.QueryType queryType = queryRouterService.getQueryType(context.getInitialQuery());
+
+        // Bước 2: Nếu là câu hỏi phức tạp, ưu tiên định tuyến thẳng đến RAGAgent
+        if (queryType == QueryRouterService.QueryType.COMPLEX) {
+            log.debug("Query classified as COMPLEX, routing directly to RAGAgent.");
+            Agent chosenAgent = agents.get("RAGAgent");
+            // Đảm bảo agent tồn tại để tránh NullPointerException
+            if (chosenAgent != null) {
+                meterRegistry.counter("agent.selected", "name", chosenAgent.getName(), "fallback", "false", "route_type", "rule_based").increment();
+                return chosenAgent;
+            }
+            log.warn("RAGAgent not found, falling back to default agent selection.");
+        }
+
+        // Bước 3: Nếu là câu hỏi đơn giản (SIMPLE), sử dụng logic LLM-based routing như cũ
+        log.debug("Query classified as SIMPLE, using LLM to choose agent.");
         String prompt = buildOrchestratorPrompt(context.getInitialQuery());
 
-        // ✅ 7. Gọi LLM thông qua service đã tích hợp tracking
         Response<AiMessage> response = trackedChatLanguageModel.generate(
-                Collections.singletonList(new UserMessage(prompt)), // Bọc prompt trong UserMessage
+                Collections.singletonList(new UserMessage(prompt)),
                 context.getUser().getId(),
                 context.getSession().getId()
         );
         String chosenAgentName = response.content().text().trim();
-        
+
         log.debug("Orchestrator LLM chose agent: '{}'", chosenAgentName);
 
         Agent chosenAgent = agents.get(chosenAgentName);
@@ -108,12 +128,13 @@ public class OrchestratorService {
 
         meterRegistry.counter("agent.selected",
             "name", chosenAgent.getName(),
-            "fallback", String.valueOf(isFallback)
+            "fallback", String.valueOf(isFallback),
+            "route_type", "llm_based" // Thêm tag để phân biệt
         ).increment();
 
         return chosenAgent;
     }
-    
+
     private String buildOrchestratorPrompt(String userInput) {
         StringBuilder promptBuilder = new StringBuilder();
         promptBuilder.append("You are an expert AI routing system. Your task is to analyze the user's query and select the best specialized agent to handle it.\n");
