@@ -100,6 +100,8 @@ public class RetrievalStep implements PipelineStep<RetrievalStepResult> {
                 .build();
     }
 
+ // ... (các phần khác của file RetrievalStep.java)
+
     private List<EmbeddingMatch<TextSegment>> searchByKeyword(String query, Filter filter, int maxResults) {
         try {
             String tsQuery = Arrays.stream(query.split("\\s+"))
@@ -110,9 +112,10 @@ public class RetrievalStep implements PipelineStep<RetrievalStepResult> {
             String whereClause = filterToSqlResult.getSql();
             List<Object> params = new ArrayList<>(filterToSqlResult.getParams());
 
-            String sql = "SELECT id, embedding, text_segment, metadata, ts_rank(text_segment_tsv, to_tsquery('simple', ?)) as score " +
+            // ✅ SỬA Ở ĐÂY: Đổi "text_tsv" thành "text_tsvector"
+            String sql = "SELECT embedding_id, embedding, text, metadata, ts_rank(text_tsvector, to_tsquery('simple', ?)) as score " +
                          "FROM message_embeddings " +
-                         "WHERE text_segment_tsv @@ to_tsquery('simple', ?) " +
+                         "WHERE text_tsvector @@ to_tsquery('simple', ?) " +
                          (!whereClause.isEmpty() ? "AND " + whereClause + " " : "") +
                          "ORDER BY score DESC LIMIT ?";
 
@@ -129,12 +132,15 @@ public class RetrievalStep implements PipelineStep<RetrievalStepResult> {
         }
     }
 
+    // ... (phần còn lại của file không đổi)
+
     private RowMapper<EmbeddingMatch<TextSegment>> embeddingMatchRowMapper() {
         return (rs, rowNum) -> {
             try {
                 double score = rs.getDouble("score");
-                String embeddingId = rs.getString("id");
-                String text = rs.getString("text_segment");
+                // ✅ SỬA Ở ĐÂY: đổi "id" thành "embedding_id"
+                String embeddingId = rs.getString("embedding_id");
+                String text = rs.getString("text");
                 String metadataJson = rs.getString("metadata");
 
                 Map<String, Object> metadataMap = objectMapper.readValue(metadataJson, new TypeReference<>() {});

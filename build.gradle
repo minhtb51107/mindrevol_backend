@@ -1,7 +1,26 @@
+buildscript {
+    repositories {
+        mavenCentral()
+    }
+    dependencies {
+        classpath "org.flywaydb:flyway-database-postgresql:10.16.0"
+        classpath "org.postgresql:postgresql:42.7.3"
+    }
+}
+
 plugins {
     id 'java'
     id 'org.springframework.boot' version '3.5.3'
     id 'io.spring.dependency-management' version '1.1.7'
+    id 'org.flywaydb.flyway' version '10.16.0'
+}
+
+flyway {
+    url = 'jdbc:postgresql://localhost:5432/education_db'
+    user = 'postgres'
+    password = '511007'
+    driver = 'org.postgresql.Driver'
+    locations = ['classpath:db/migration']
 }
 
 group = 'com.example'
@@ -97,7 +116,7 @@ dependencies {
     annotationProcessor 'org.projectlombok:lombok'
 
     // PostgreSQL JDBC
-    runtimeOnly 'org.postgresql:postgresql'
+    implementation 'org.postgresql:postgresql:42.7.3'
 
     // JavaMailSender - dùng để gửi mã xác minh qua email
     implementation 'org.springframework.boot:spring-boot-starter-mail'
@@ -116,6 +135,9 @@ dependencies {
     
     // https://mvnrepository.com/artifact/com.opencsv/opencsv
 	implementation("com.opencsv:opencsv:5.9")
+	
+	implementation 'org.flywaydb:flyway-core'
+    implementation 'org.flywaydb:flyway-database-postgresql'
 }
 
 tasks.named('test') {

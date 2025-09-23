@@ -18,9 +18,12 @@ pipelines:
 # Thêm cấu hình cho bước retrieval
 retrieval:
   max-results: 50 # Số lượng tài liệu tối đa lấy ra để đưa cho reranker
-# 👇 ADD THIS CONFIGURATION
+
+# 👇 SỬA LẠI KHỐI SPRING NHƯ SAU
 spring:
   data:
     redis:
       repositories:
         enabled: false
+  flyway:
+    repair: true # Thêm cấu hình flyway vào đây
