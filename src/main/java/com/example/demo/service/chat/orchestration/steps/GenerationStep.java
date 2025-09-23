@@ -161,10 +161,16 @@ public class GenerationStep implements PipelineStep {
         Map<String, Object> userPrefs = userPreferenceService.getUserPreferencesForPrompt(context.getUser().getId());
         String ragContextStr = context.getRagContextString() != null ? context.getRagContextString() : "";
         String fileContext = extractFileContext(context);
-        
+
         List<ChatMessage> messages = new ArrayList<>();
         StringBuilder sb = new StringBuilder();
-        sb.append("Bạn là trợ lý AI hữu ích.\n");
+        sb.append("Bạn là một trợ lý AI hữu ích.\n");
+        sb.append("--- HƯỚNG DẪN QUAN TRỌNG ---\n");
+        sb.append("1. CHỈ trả lời câu hỏi dựa trên thông tin có trong \"NGỮ CẢNH TỪ FILE ĐÍNH KÈM\" hoặc \"BỐI CẢNH TỪ BỘ NHỚ RAG\".\n");
+        sb.append("2. Nếu thông tin không có trong ngữ cảnh được cung cấp, hãy trả lời chính xác là: \"Tôi không tìm thấy thông tin về vấn đề này\".\n");
+        sb.append("3. KHÔNG được tự ý suy diễn hoặc sử dụng kiến thức bên ngoài để trả lời.\n");
+        sb.append("--- KẾT THÚC HƯỚNG DẪN ---\n\n");
+
 
         if (userPrefs != null && !userPrefs.isEmpty()) {
             sb.append("\n--- SỞ THÍCH CỦA NGƯỜI DÙNG ---\n");
@@ -178,7 +184,7 @@ public class GenerationStep implements PipelineStep {
             sb.append(fileContext).append("\n");
             sb.append("--- HẾT NGỮ CẢNH FILE ---\n\n");
         }
-        
+
         sb.append("\n--- BỐI CẢNH TỪ BỘ NHỚ RAG (NẾU CÓ) ---\n");
         sb.append(ragContextStr.isEmpty() ? "Không có" : ragContextStr).append("\n");
         sb.append("\n--- HẾT BỐI CẢNH ---\n\nHãy trả lời câu hỏi hiện tại dựa trên các ngữ cảnh trên (ưu tiên ngữ cảnh file).");

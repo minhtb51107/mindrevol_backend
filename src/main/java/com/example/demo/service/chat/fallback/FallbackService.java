@@ -34,6 +34,21 @@ public class FallbackService {
         "Tôi gặp một chút khó khăn trong việc tổng hợp câu trả lời. Vui lòng thử lại với một câu hỏi khác.",
         "Có một lỗi nội bộ xảy ra khiến tôi không thể hoàn thành câu trả lời. Rất xin lỗi vì sự bất tiện này."
     );
+    
+ // ✅ THÊM MỚI
+    private static final List<String> NO_RETRIEVAL_RESULT_FALLBACKS = List.of(
+        "Tôi không thể tìm thấy thông tin cụ thể trong tài liệu của mình. Bạn có muốn tôi tìm kiếm trên Internet không?",
+        "Trong các tài liệu hiện có, tôi không tìm thấy nội dung liên quan. Bạn có muốn tôi thử tìm kiếm online không?",
+        "Thông tin bạn yêu cầu không có trong cơ sở kiến thức của tôi. Tôi có thể giúp bạn tìm kiếm trên web."
+    );
+    
+    /**
+     * ✅ Trả về thông báo lỗi khi không tìm thấy kết quả nào từ retrieval.
+     * @return Một chuỗi thông báo lỗi ngẫu nhiên.
+     */
+    public String getNoRetrievalResultResponse() {
+        return getRandomResponse(NO_RETRIEVAL_RESULT_FALLBACKS);
+    }
 
     private final Random random = new Random();
 
