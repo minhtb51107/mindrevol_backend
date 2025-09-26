@@ -2,6 +2,7 @@ package com.example.demo.config;
 
 import java.time.Duration;
 
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -130,5 +131,18 @@ public class LangChain4jConfig {
     @Bean
     public QueryRouterService queryRouterService(ChatLanguageModel chatLanguageModel) {
         return AiServices.create(QueryRouterService.class, chatLanguageModel);
+    }
+    
+    @Bean
+    @Qualifier("routingChatModel") // Đặt tên định danh cho Bean này
+    public ChatLanguageModel routingChatLanguageModel() {
+        return OpenAiChatModel.builder()
+                .apiKey(openAiApiKey)
+                .modelName("gpt-3.5-turbo") // <-- Sử dụng model rẻ hơn
+                .temperature(0.0) // Việc định tuyến cần sự chính xác, không cần sáng tạo
+                .timeout(Duration.ofSeconds(10))
+                .logRequests(true)
+                .logResponses(true)
+                .build();
     }
 }
