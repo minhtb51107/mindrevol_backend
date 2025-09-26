@@ -20,6 +20,8 @@ import dev.langchain4j.model.chat.StreamingChatLanguageModel;
 import dev.langchain4j.model.output.Response;
 import dev.langchain4j.store.embedding.EmbeddingMatch;
 import lombok.extern.slf4j.Slf4j;
+
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
@@ -37,15 +39,14 @@ public class GenerationStep implements PipelineStep {
     private final ChatLanguageModel chatLanguageModel;
     private final StreamingChatLanguageModel streamingChatLanguageModel;
     private final UserPreferenceService userPreferenceService;
-    // --- DEPENDENCIES MỚI ---
     private final GuardrailManager guardrailManager;
     private final ChatMessageService chatMessageService;
 
-
-    public GenerationStep(ChatLanguageModel chatLanguageModel,
+    // ✅ 2. Thêm @Qualifier để chỉ rõ bean "chatLanguageModel" cần được inject
+    public GenerationStep(@Qualifier("chatLanguageModel") ChatLanguageModel chatLanguageModel,
                           StreamingChatLanguageModel streamingChatLanguageModel,
                           UserPreferenceService userPreferenceService,
-                          @Lazy GuardrailManager guardrailManager, // @Lazy để tránh vòng lặp dependency
+                          @Lazy GuardrailManager guardrailManager,
                           ChatMessageService chatMessageService) {
         this.chatLanguageModel = chatLanguageModel;
         this.streamingChatLanguageModel = streamingChatLanguageModel;

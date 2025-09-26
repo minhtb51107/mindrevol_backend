@@ -1,3 +1,5 @@
+// src/main/java/com/example/demo/config/LangChain4jConfig.java
+
 package com.example.demo.config;
 
 import java.time.Duration;
@@ -6,6 +8,7 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Primary; // ✅ 1. Thêm import này
 
 import com.example.demo.service.chat.agent.ToolAgent;
 import com.example.demo.service.chat.orchestration.rules.QueryRouterService;
@@ -31,7 +34,6 @@ import dev.langchain4j.web.search.WebSearchEngine;
 @Configuration
 public class LangChain4jConfig {
 	
-	 // ✅ Tiêm key từ application.properties
     @Value("${langchain4j.openai.api-key}")
     private String openAiApiKey;
 
@@ -39,6 +41,7 @@ public class LangChain4jConfig {
     private String chatModelName;
 
     @Bean
+    @Primary // ✅ 2. Đánh dấu đây là bean mặc định cho ChatLanguageModel
     public ChatLanguageModel chatLanguageModel() {
         return OpenAiChatModel.builder()
                 .apiKey(openAiApiKey)
@@ -63,42 +66,21 @@ public class LangChain4jConfig {
                 .build();
     }
     
-//    @Bean
-//    public ContentRetriever baseContentRetriever(
-//            EmbeddingStore<TextSegment> embeddingStore,
-//            EmbeddingModel embeddingModel) {
-//        
-//        return EmbeddingStoreContentRetriever.builder()
-//                .embeddingStore(embeddingStore)
-//                .embeddingModel(embeddingModel)
-//                .maxResults(20) // Lấy 20 kết quả thô, như bạn dự định
-//                .build();
-//    }
-    
-
-    // ✅ THÊM BEAN NÀY VÀO
     @Bean
     public ChatMemoryProvider chatMemoryProvider() {
-        // InMemoryChatMemoryStore sẽ lưu trữ lịch sử chat của TẤT CẢ người dùng trong bộ nhớ.
-        // Điều này phù hợp cho việc thử nghiệm và các ứng dụng nhỏ.
-        // Khi triển khai thực tế, bạn có thể cân nhắc dùng RedisChatMemoryStore.
         return session_id -> MessageWindowChatMemory.builder()
                 .id(session_id)
-                .maxMessages(20) // Lưu lại 20 tin nhắn gần nhất cho mỗi session
+                .maxMessages(20)
                 .chatMemoryStore(new InMemoryChatMemoryStore())
                 .build();
     }
     
     @Bean
     public DocumentSplitter documentSplitter() {
-        // Đây là một bộ chia văn bản (splitter) thông minh.
-        // Nó cố gắng chia nhỏ tài liệu theo các đoạn văn, dòng, v.v.
-        // và đảm bảo mỗi đoạn (chunk) không vượt quá 500 token, 
-        // với 50 token gối lên nhau (overlap) để giữ ngữ cảnh.
     	return DocumentSplitters.recursive(
     	        500,
     	        50,
-    	        new OpenAiTokenizer("gpt-4o") // ✅ ĐÃ SỬA
+    	        new OpenAiTokenizer("gpt-4o")
     	);
     }
     
@@ -107,40 +89,38 @@ public class LangChain4jConfig {
         return OpenAiStreamingChatModel.builder()
                 .apiKey(openAiApiKey)
                 .modelName(chatModelName)
-                .temperature(0.7) // Đảm bảo đồng bộ nhiệt độ
-                .timeout(Duration.ofSeconds(60)) // Đặt timeout
+                .temperature(0.7)
+                .timeout(Duration.ofSeconds(60))
                 .build();
     }
     
-    // ✅ BƯỚC 2: SỬA LẠI PHƯƠNG THỨC toolAgent ĐỂ NHẬN TRỰC TIẾP SerperWebSearchEngine
     @Bean
     public ToolAgent toolAgent(ChatLanguageModel chatLanguageModel,
                                ChatMemoryProvider chatMemoryProvider,
-                               SerperWebSearchEngine serperWebSearchEngine, // Thay WebSearchEngine bằng SerperWebSearchEngine
+                               SerperWebSearchEngine serperWebSearchEngine,
                                TimeTool timeTool,
                                WeatherTool weatherTool) {
         return AiServices.builder(ToolAgent.class)
                 .chatLanguageModel(chatLanguageModel)
                 .chatMemoryProvider(chatMemoryProvider)
-                // LangChain4j đủ thông minh để biết SerperWebSearchEngine là một WebSearchEngine
                 .tools(serperWebSearchEngine, timeTool, weatherTool)
                 .build();
     }
     
-    // ✅ Thêm Bean này để tạo QueryRouterService
     @Bean
     public QueryRouterService queryRouterService(ChatLanguageModel chatLanguageModel) {
         return AiServices.create(QueryRouterService.class, chatLanguageModel);
     }
     
     @Bean
-    @Qualifier("routingChatModel") // Đặt tên định danh cho Bean này
+    @Qualifier("routingChatModel")
     public ChatLanguageModel routingChatLanguageModel() {
         return OpenAiChatModel.builder()
                 .apiKey(openAiApiKey)
-                .modelName("gpt-3.5-turbo") // <-- Sử dụng model rẻ hơn
-                .temperature(0.0) // Việc định tuyến cần sự chính xác, không cần sáng tạo
-                .timeout(Duration.ofSeconds(10))
+                .modelName("gpt-3.5-turbo")
+                .temperature(0.0)
+                .timeout(Duration.ofSeconds(20))
+                .maxRetries(2)
                 .logRequests(true)
                 .logResponses(true)
                 .build();
