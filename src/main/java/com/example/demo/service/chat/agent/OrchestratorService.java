@@ -1,14 +1,14 @@
 // src/main/java/com/example/demo/service/chat/agent/OrchestratorService.java
 package com.example.demo.service.chat.agent;
 
-import com.example.demo.model.chat.ChatSession;
 import com.example.demo.service.chat.ChatMessageService;
 import com.example.demo.service.chat.orchestration.context.RagContext;
 import com.example.demo.service.chat.orchestration.rules.QueryRouterService;
+import dev.langchain4j.data.message.AiMessage;
+import dev.langchain4j.data.message.UserMessage;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
-import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
@@ -48,41 +48,43 @@ public class OrchestratorService {
         String route = queryRouter.route(userMessage);
         log.info("Query: '{}' -> Routed to: {}", userMessage, route.toUpperCase());
         String upperCaseRoute = route.toUpperCase();
+        
+        String response; // Khai báo biến response ở ngoài
 
         if (upperCaseRoute.contains("TOOL")) {
-            String response = toolAgent.chat(userMessage);
-            saveConversation(context.getSession(), userMessage, response); // Tái sử dụng logic lưu
-            return response;
-
+            response = toolAgent.chat(userMessage);
         } else if (upperCaseRoute.contains("MEMORY_QUERY")) {
-            // Thực thi agent để lấy câu trả lời
             memoryQueryAgent.execute(context);
-            String response = context.getReply();
-
-            // ✅ QUAN TRỌNG: Lưu lại cuộc trò chuyện sau khi có câu trả lời
-            saveConversation(context.getSession(), userMessage, response);
-            return response;
-
+            response = context.getReply();
         } else if (upperCaseRoute.contains("RAG")) {
             ragAgent.execute(context);
-            // Không cần lưu ở đây, pipeline đã xử lý
-            return context.getReply();
-
+            response = context.getReply();
         } else { // Mặc định là CHITCHAT
             chitChatAgent.execute(context);
-            // Không cần lưu ở đây, pipeline đã xử lý
-            return context.getReply();
+            response = context.getReply();
         }
+        
+        // ✅ TẤT CẢ CÁC LUỒNG ĐỀU ĐI QUA ĐÂY ĐỂ LƯU TRỮ MỘT CÁCH NHẤT QUÁN
+        if (response != null && !response.isEmpty()) {
+            saveConversationAndUpdateMemory(context, userMessage, response);
+        }
+
+        return response;
     }
 
-    /**
-     * Phương thức trợ giúp để đóng gói logic lưu tin nhắn, tránh lặp code.
-     */
-    private void saveConversation(ChatSession session, String userMessage, String assistantResponse) {
-        // 1. Lưu tin nhắn của người dùng
-        chatMessageService.saveMessage(session, "user", userMessage);
-        // 2. Lưu tin nhắn trả lời của AI
-        chatMessageService.saveMessage(session, "assistant", assistantResponse);
-        log.info("Successfully persisted direct-agent conversation for session {}", session.getId());
+    private void saveConversationAndUpdateMemory(RagContext context, String userMessage, String assistantResponse) {
+        try {
+            // 1. Lưu vào bộ nhớ dài hạn (PostgreSQL)
+            chatMessageService.saveMessage(context.getSession(), "user", userMessage);
+            chatMessageService.saveMessage(context.getSession(), "assistant", assistantResponse);
+            log.info("Orchestrator saved conversation to DB for session {}", context.getSession().getId());
+
+            // 2. Cập nhật bộ nhớ ngắn hạn (Redis, thông qua đối tượng ChatMemory)
+            context.getChatMemory().add(UserMessage.from(userMessage));
+            context.getChatMemory().add(AiMessage.from(assistantResponse));
+            log.info("Orchestrator updated short-term memory for session {}", context.getSession().getId());
+        } catch (Exception e) {
+            log.error("Error during centralized persistence in Orchestrator for session {}: {}", context.getSession().getId(), e.getMessage(), e);
+        }
     }
 }

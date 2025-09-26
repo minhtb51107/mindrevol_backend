@@ -141,21 +141,21 @@ public class GenerationStep implements PipelineStep {
     }
     
     private void persistConversation(RagContext context, String userQuery, String aiReply) {
-    	ChatSession session = context.getSession();
-        try {
-            
-            ChatMemory chatMemory = context.getChatMemory();
-            
-            chatMemory.add(UserMessage.from(userQuery));
-            chatMemory.add(AiMessage.from(aiReply));
-            
-            chatMessageService.saveMessage(session, "user", userQuery);
-            chatMessageService.saveMessage(session, "assistant", aiReply);
-
-            log.info("Successfully persisted conversation for session {}", session.getId());
-        } catch (Exception e) {
-            log.error("Failed to persist conversation for session {}: {}", session.getId(), e.getMessage(), e);
-        }
+//    	ChatSession session = context.getSession();
+//        try {
+//            
+//            ChatMemory chatMemory = context.getChatMemory();
+//            
+//            chatMemory.add(UserMessage.from(userQuery));
+//            chatMemory.add(AiMessage.from(aiReply));
+//            
+//            chatMessageService.saveMessage(session, "user", userQuery);
+//            chatMessageService.saveMessage(session, "assistant", aiReply);
+//
+//            log.info("Successfully persisted conversation for session {}", session.getId());
+//        } catch (Exception e) {
+//            log.error("Failed to persist conversation for session {}: {}", session.getId(), e.getMessage(), e);
+//        }
     }
     
     private List<ChatMessage> buildFinalLc4jMessages(RagContext context) {

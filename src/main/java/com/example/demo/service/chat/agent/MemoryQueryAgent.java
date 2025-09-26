@@ -1,22 +1,24 @@
+// src/main/java/com/example/demo/service/chat/agent/MemoryQueryAgent.java
 package com.example.demo.service.chat.agent;
 
+import com.example.demo.model.chat.ChatMessage;
+import com.example.demo.service.chat.ChatMessageService;
 import com.example.demo.service.chat.orchestration.context.RagContext;
-import dev.langchain4j.data.message.ChatMessage;
-import dev.langchain4j.data.message.UserMessage;
-import dev.langchain4j.memory.ChatMemory;
 import dev.langchain4j.model.chat.ChatLanguageModel;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+import java.util.List;
+import java.util.stream.Collectors;
+
 @Slf4j
 @Service
+@RequiredArgsConstructor
 public class MemoryQueryAgent implements Agent {
 
     private final ChatLanguageModel chatLanguageModel;
-
-    public MemoryQueryAgent(ChatLanguageModel chatLanguageModel) {
-        this.chatLanguageModel = chatLanguageModel;
-    }
+    private final ChatMessageService chatMessageService;
 
     @Override
     public String getName() {
@@ -30,42 +32,51 @@ public class MemoryQueryAgent implements Agent {
 
     @Override
     public RagContext execute(RagContext context) {
-        log.debug("Executing MemoryQueryAgent for query: '{}'", context.getInitialQuery());
+        log.debug("Executing FINAL MemoryQueryAgent for query: '{}'", context.getInitialQuery());
 
-        // --- LOGIC ĐÃ ĐƯỢC NÂNG CẤP ---
-        // 1. Xây dựng một câu lệnh (prompt) rõ ràng và có cấu trúc
-        String prompt = buildMemoryQueryPrompt(context.getChatMemory(), context.getInitialQuery());
+        // 1. Lấy lịch sử đã được lưu trong DB (tính đến trước lượt này)
+        List<ChatMessage> historyFromDb = chatMessageService.getMessagesForSession(
+                context.getSession().getId(),
+                context.getUser()
+        );
 
-        // 2. Gọi LLM với câu lệnh đã được cải tiến
+        // 2. Lấy câu hỏi hiện tại của người dùng từ context
+        String currentUserQuery = context.getInitialQuery();
+
+        // 3. Xây dựng prompt kết hợp cả hai nguồn
+        String prompt = buildFinalPrompt(historyFromDb, currentUserQuery);
+
+        // 4. Gọi LLM và trả về kết quả
         String response = chatLanguageModel.generate(prompt);
-        // ---------------------------------
-
         context.setReply(response);
         return context;
     }
 
     /**
-     * Xây dựng một câu lệnh chi tiết để hướng dẫn LLM hiểu đúng vai trò
-     * và trả lời chính xác các câu hỏi về lịch sử trò chuyện.
-     * @param chatMemory Lịch sử trò chuyện
-     * @param userQuery Câu hỏi hiện tại của người dùng
-     * @return Một chuỗi prompt hoàn chỉnh
+     * Phương thức cuối cùng: Xây dựng prompt từ lịch sử DB và câu hỏi hiện tại.
      */
-    private String buildMemoryQueryPrompt(ChatMemory chatMemory, String userQuery) {
+    private String buildFinalPrompt(List<ChatMessage> dbHistory, String currentUserQuery) {
         StringBuilder promptBuilder = new StringBuilder();
         promptBuilder.append("Bạn là một trợ lý AI hữu ích có khả năng ghi nhớ và trả lời các câu hỏi về cuộc trò chuyện trước đây.\n");
-        promptBuilder.append("Dưới đây là lịch sử trò chuyện giữa bạn (Trợ lý AI) và Người dùng.\n");
-        promptBuilder.append("Hãy dựa vào lịch sử này để trả lời câu hỏi của Người dùng một cách chính xác.\n\n");
-        promptBuilder.append("--- LỊCH SỬ TRÒ CHUYỆN ---\n");
+        promptBuilder.append("Dưới đây là lịch sử trò chuyện đã diễn ra. Hãy dựa vào lịch sử này để trả lời câu hỏi cuối cùng của Người dùng.\n\n");
+        promptBuilder.append("--- LỊCH SỬ TRÒ CHUYỆN ĐÃ LƯU ---\n");
 
-        // Định dạng lại lịch sử để làm rõ vai trò của từng bên
-        for (ChatMessage message : chatMemory.messages()) {
-            String role = (message instanceof UserMessage) ? "Người dùng" : "Trợ lý AI";
-            promptBuilder.append(String.format("%s: %s\n", role, message.text()));
+        if (dbHistory.isEmpty()) {
+            promptBuilder.append("(Chưa có lịch sử nào được lưu)\n");
+        } else {
+            for (ChatMessage message : dbHistory) {
+                String role = "user".equalsIgnoreCase(message.getSender()) ? "Người dùng" : "Trợ lý AI";
+                promptBuilder.append(String.format("%s: %s\n", role, message.getContent()));
+            }
         }
 
         promptBuilder.append("--- KẾT THÚC LỊCH SỬ ---\n\n");
-        promptBuilder.append("Câu hỏi hiện tại của Người dùng: \"").append(userQuery).append("\"\n\n");
+        
+        // ✅ THAY ĐỔI QUAN TRỌNG:
+        // Chúng ta chỉ đưa câu hỏi hiện tại vào phần cuối cùng của prompt,
+        // tách biệt nó khỏi lịch sử đã lưu.
+        promptBuilder.append("Dựa vào lịch sử trên, hãy trả lời câu hỏi sau của Người dùng:\n");
+        promptBuilder.append("Người dùng: \"").append(currentUserQuery).append("\"\n\n");
         promptBuilder.append("Câu trả lời của bạn (Trợ lý AI):");
 
         return promptBuilder.toString();
