@@ -1,3 +1,4 @@
+// src/main/java/com/example/demo/service/chat/ChatAIService.java
 package com.example.demo.service.chat;
 
 import com.example.demo.model.auth.User;
@@ -11,12 +12,12 @@ import dev.langchain4j.memory.ChatMemory;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.scheduling.annotation.Async; // <-- Import @Async
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
-import org.springframework.web.servlet.mvc.method.annotation.SseEmitter; // <-- Import SseEmitter
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
-import java.io.IOException; // <-- Import IOException
+import java.io.IOException;
 import java.util.UUID;
 
 @Slf4j
@@ -43,10 +44,9 @@ public class ChatAIService {
     }
 
     /**
-     * Phương thức xử lý yêu cầu chat đồng bộ (cũ).
+     * Phương thức xử lý yêu cầu chat đồng bộ (blocking).
      */
     public String processMessages(Long sessionId, String prompt, MultipartFile file, User user) {
-        // ... (phần này giữ nguyên không đổi)
         try {
             ChatSession session = sessionRepo.findById(sessionId)
                     .orElseThrow(() -> new IllegalArgumentException("Session không tồn tại"));
@@ -70,10 +70,8 @@ public class ChatAIService {
                     .build();
 
             log.info("Delegating blocking request to OrchestratorService for session {}", sessionId);
-            // Phương thức orchestrate cũ trả về String, nhưng chúng ta sẽ sửa nó
-            // Để tương thích, tạm thời chúng ta sẽ giả định nó trả về String
-            // Sau khi sửa orchestrate(), dòng này sẽ cần xem lại
-            return orchestratorService.orchestrate(context);
+            // ✅ SỬA LỖI: Gọi orchestrate với cả prompt và context
+            return orchestratorService.orchestrate(prompt, context);
 
         } catch (Exception e) {
             log.error("Exception at ChatAIService entry point: {}", e.getMessage(), e);
@@ -81,49 +79,57 @@ public class ChatAIService {
         }
     }
 
-    /**
-     * Phương thức MỚI để xử lý yêu cầu chat streaming.
-     * Chạy trên một luồng riêng để không block request HTTP ban đầu.
-     */
-    @Async("secureChatTaskExecutor")
-    public void processStreamMessages(Long sessionId, String prompt, MultipartFile file, User user, SseEmitter emitter) {
-        try {
-            // Logic chuẩn bị session, memory, file tương tự như phương thức đồng bộ
-            ChatSession session = sessionRepo.findById(sessionId)
-                    .orElseThrow(() -> new IllegalArgumentException("Session không tồn tại"));
-            ChatMemory chatMemory = langChainChatMemoryService.getChatMemory(sessionId);
-            String tempFileId = null;
-            if (file != null) {
-                tempFileId = UUID.randomUUID().toString();
-                documentIngestionService.ingestTemporaryFile(file, user, session.getId(), tempFileId);
-            }
-
-            // Tạo context và truyền emitter vào
-            RagContext context = RagContext.builder()
-                    .initialQuery(prompt)
-                    .user(user)
-                    .session(session)
-                    .chatMemory(chatMemory)
-                    .tempFileId(tempFileId)
-                    .pipelineName(this.defaultPipelineName)
-                    .sseEmitter(emitter) // <-- Đặt emitter vào context
-                    .build();
-
-            // Gọi orchestrator. Giờ đây phương thức này sẽ xử lý việc gửi dữ liệu
-            // qua emitter và chúng ta không cần giá trị trả về.
-            orchestratorService.orchestrate(context);
-
-        } catch (Exception e) {
-            log.error("Exception in stream processing for session {}: {}", sessionId, e.getMessage(), e);
-            try {
-                // Nếu có lỗi, gửi một sự kiện 'error' về client
-                emitter.send(SseEmitter.event().name("error").data("Đã có lỗi xảy ra trong quá trình xử lý."));
-            } catch (IOException ex) {
-                log.warn("Failed to send error event to client for session {}", sessionId, ex);
-            } finally {
-                // Đảm bảo emitter luôn được đóng lại, dù thành công hay thất bại
-                emitter.complete();
-            }
-        }
-    }
+//    /**
+//     * Phương thức MỚI để xử lý yêu cầu chat streaming.
+//     */
+//    @Async("secureChatTaskExecutor")
+//    public void processStreamMessages(Long sessionId, String prompt, MultipartFile file, User user, SseEmitter emitter) {
+//        try {
+//            ChatSession session = sessionRepo.findById(sessionId)
+//                    .orElseThrow(() -> new IllegalArgumentException("Session không tồn tại"));
+//            ChatMemory chatMemory = langChainChatMemoryService.getChatMemory(sessionId);
+//            String tempFileId = null;
+//            if (file != null) {
+//                tempFileId = UUID.randomUUID().toString();
+//                documentIngestionService.ingestTemporaryFile(file, user, session.getId(), tempFileId);
+//            }
+//
+//            RagContext context = RagContext.builder()
+//                    .initialQuery(prompt)
+//                    .user(user)
+//                    .session(session)
+//                    .chatMemory(chatMemory)
+//                    .tempFileId(tempFileId)
+//                    .pipelineName(this.defaultPipelineName)
+//                    .sseEmitter(emitter)
+//                    .build();
+//
+//            // ✅ SỬA LỖI: Gọi orchestrate với cả prompt và context
+//            // Orchestrator sẽ tự xử lý việc gửi dữ liệu qua emitter nếu cần (RAG/ChitChat)
+//            // hoặc trả về kết quả trực tiếp (TOOL).
+//            String result = orchestratorService.orchestrate(prompt, context);
+//
+//            // ✅ XỬ LÝ KẾT QUẢ TỪ TOOL AGENT:
+//            // Nếu result không rỗng, có nghĩa là ToolAgent đã chạy và trả về kết quả.
+//            // Các agent RAG/ChitChat sẽ tự xử lý emitter và trả về null hoặc chuỗi rỗng.
+//            // Chúng ta cần gửi kết quả này về cho client qua SseEmitter.
+//            if (result != null && !result.isEmpty() && !context.isStreamCompleted()) {
+//                 emitter.send(SseEmitter.event().name("message").data(result));
+//            }
+//
+//        } catch (Exception e) {
+//            log.error("Exception in stream processing for session {}: {}", sessionId, e.getMessage(), e);
+//            try {
+//                emitter.send(SseEmitter.event().name("error").data("Đã có lỗi xảy ra trong quá trình xử lý."));
+//            } catch (IOException ex) {
+//                log.warn("Failed to send error event to client for session {}", sessionId, ex);
+//            }
+//        } finally {
+//            // Đảm bảo emitter luôn được đóng lại, dù thành công hay thất bại
+//            // Kiểm tra xem nó có đang mở không trước khi đóng
+//            if (!context.isStreamCompleted()) {
+//                emitter.complete();
+//            }
+//        }
+//    }
 }

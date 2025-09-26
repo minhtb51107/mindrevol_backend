@@ -27,3 +27,15 @@ spring:
         enabled: false
   flyway:
     repair: true # Thêm cấu hình flyway vào đây
+
+serper:
+  api:
+    key: "88167f39e2136998ff9cfdb9ec1c89b781e49934"
+
+weather:
+  api:
+    key: "4cc89aa50518ec1d08113963d6239d59"
+
+fmp:
+  api:
+    key: "wAxJsVBTZDVUL8KJHc7SJTmwVPImdrdR"
