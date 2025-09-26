@@ -19,18 +19,16 @@ import java.util.stream.Collectors;
 public class OrchestratorService {
 
     private final QueryRouterService queryRouter;
-    private final ToolAgent toolAgent;
     private final Agent ragAgent;
     private final Agent chitChatAgent;
     private final ChatMessageService chatMessageService;
     private final Agent memoryQueryAgent;
+    private final Agent toolAgent; // Bây giờ đây là ToolExecutorAgent
 
     public OrchestratorService(QueryRouterService queryRouter,
-                               ToolAgent toolAgent,
-                               List<Agent> agentList,
+                               List<Agent> agentList, // Sửa để nhận List<Agent>
                                ChatMessageService chatMessageService) {
         this.queryRouter = queryRouter;
-        this.toolAgent = toolAgent;
         this.chatMessageService = chatMessageService;
 
         Map<String, Agent> agents = agentList.stream()
@@ -38,9 +36,10 @@ public class OrchestratorService {
         this.ragAgent = agents.get("RAGAgent");
         this.chitChatAgent = agents.get("ChitChatAgent");
         this.memoryQueryAgent = agents.get("MemoryQueryAgent");
+        this.toolAgent = agents.get("ToolAgent"); // Lấy ToolExecutorAgent từ context
 
-        if (this.ragAgent == null || this.chitChatAgent == null || this.memoryQueryAgent == null) {
-            throw new IllegalStateException("RAGAgent, ChitChatAgent, or MemoryQueryAgent not found!");
+        if (this.ragAgent == null || this.chitChatAgent == null || this.memoryQueryAgent == null || this.toolAgent == null) {
+            throw new IllegalStateException("One or more required agents (RAGAgent, ChitChatAgent, MemoryQueryAgent, ToolAgent) not found!");
         }
     }
 
@@ -51,8 +50,10 @@ public class OrchestratorService {
         
         String response; // Khai báo biến response ở ngoài
 
+        // ✅ THAY ĐỔI QUAN TRỌNG: Thống nhất cách gọi agent
         if (upperCaseRoute.contains("TOOL")) {
-            response = toolAgent.chat(userMessage);
+            toolAgent.execute(context); // Gọi qua interface Agent chung
+            response = context.getReply();
         } else if (upperCaseRoute.contains("MEMORY_QUERY")) {
             memoryQueryAgent.execute(context);
             response = context.getReply();

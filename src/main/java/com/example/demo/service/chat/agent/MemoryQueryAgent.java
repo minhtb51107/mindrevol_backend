@@ -52,14 +52,13 @@ public class MemoryQueryAgent implements Agent {
         return context;
     }
 
-    /**
-     * Phương thức cuối cùng: Xây dựng prompt từ lịch sử DB và câu hỏi hiện tại.
-     */
     private String buildFinalPrompt(List<ChatMessage> dbHistory, String currentUserQuery) {
         StringBuilder promptBuilder = new StringBuilder();
-        promptBuilder.append("Bạn là một trợ lý AI hữu ích có khả năng ghi nhớ và trả lời các câu hỏi về cuộc trò chuyện trước đây.\n");
-        promptBuilder.append("Dưới đây là lịch sử trò chuyện đã diễn ra. Hãy dựa vào lịch sử này để trả lời câu hỏi cuối cùng của Người dùng.\n\n");
-        promptBuilder.append("--- LỊCH SỬ TRÒ CHUYỆN ĐÃ LƯU ---\n");
+        
+        // 1. Định hình Persona ngay từ đầu
+        promptBuilder.append("Bạn là một trợ lý AI cá tính, thông minh và có chút hài hước. Hãy nói chuyện với người dùng một cách tự nhiên, thân thiện như một người bạn (có thể xưng hô 'tôi' và gọi người dùng là 'bạn' hoặc 'ông' nếu phù hợp). Đừng ngại sử dụng emojis để thể hiện cảm xúc. TUYỆT ĐỐI không trả lời một cách máy móc.\n\n");
+
+        promptBuilder.append("--- BẮT ĐẦU LỊCH SỬ TRÒ CHUYỆN ---\n");
 
         if (dbHistory.isEmpty()) {
             promptBuilder.append("(Chưa có lịch sử nào được lưu)\n");
@@ -71,13 +70,15 @@ public class MemoryQueryAgent implements Agent {
         }
 
         promptBuilder.append("--- KẾT THÚC LỊCH SỬ ---\n\n");
+
+        // 2. Hướng dẫn chi tiết hơn về phong cách trả lời
+        promptBuilder.append("HƯỚNG DẪN ĐẶC BIỆT DÀNH CHO BẠN:\n");
+        promptBuilder.append("1. Nhiệm vụ của bạn là trả lời câu hỏi CUỐI CÙNG của người dùng: \"").append(currentUserQuery.trim()).append("\"\n");
+        promptBuilder.append("2. Hãy trả lời dựa trên LỊCH SỬ TRÒ CHUYỆN ở trên.\n");
+        promptBuilder.append("3. Nếu người dùng hỏi 'tôi vừa nhắn gì?', hãy nhìn vào tin nhắn 'Người dùng' ngay trước đó trong lịch sử, trích dẫn lại nó và thêm một bình luận thông minh hoặc hài hước. Ví dụ: 'Ông vừa nhắn đúng một chữ gọn lỏn: “hi” 😎. Đúng kiểu test xem tôi có bật lại không ấy.'\n");
+        promptBuilder.append("4. Giữ vững phong cách cá tính, thông minh và thân thiện của bạn. Thêm icon (emoji) phù hợp vào cuối câu trả lời nhé!\n\n");
         
-        // ✅ THAY ĐỔI QUAN TRỌNG:
-        // Chúng ta chỉ đưa câu hỏi hiện tại vào phần cuối cùng của prompt,
-        // tách biệt nó khỏi lịch sử đã lưu.
-        promptBuilder.append("Dựa vào lịch sử trên, hãy trả lời câu hỏi sau của Người dùng:\n");
-        promptBuilder.append("Người dùng: \"").append(currentUserQuery).append("\"\n\n");
-        promptBuilder.append("Câu trả lời của bạn (Trợ lý AI):");
+        promptBuilder.append("Câu trả lời của bạn (với phong cách của một người bạn AI cá tính):");
 
         return promptBuilder.toString();
     }
