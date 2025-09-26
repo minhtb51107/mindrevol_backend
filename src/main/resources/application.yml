@@ -1,4 +1,29 @@
-# Cấu hình pipeline mặc định
+# ==========================
+# Datasource & Hikari Config
+# ==========================
+spring:
+  datasource:
+    hikari:
+      # Thời gian tối đa một kết nối được tồn tại trong pool (ms). 
+      # Hãy đặt thấp hơn thời gian timeout của DB. Ví dụ: 10 phút.
+      max-lifetime: 600000 
+      # Thời gian một kết nối được phép nhàn rỗi (ms). Ví dụ: 5 phút.
+      idle-timeout: 300000
+      # Thời gian chờ để có được kết nối từ pool (ms).
+      connection-timeout: 30000 
+      # Một câu lệnh SQL đơn giản để kiểm tra kết nối có còn sống không.
+      connection-test-query: "SELECT 1"
+
+  data:
+    redis:
+      repositories:
+        enabled: false
+  flyway:
+    repair: true # Thêm cấu hình flyway vào đây
+
+# ==========================
+# App Config
+# ==========================
 app:
   default-pipeline-name: "default-rag"
 
@@ -19,15 +44,9 @@ pipelines:
 retrieval:
   max-results: 50 # Số lượng tài liệu tối đa lấy ra để đưa cho reranker
 
-# 👇 SỬA LẠI KHỐI SPRING NHƯ SAU
-spring:
-  data:
-    redis:
-      repositories:
-        enabled: false
-  flyway:
-    repair: true # Thêm cấu hình flyway vào đây
-
+# ==========================
+# API Keys
+# ==========================
 serper:
   api:
     key: "88167f39e2136998ff9cfdb9ec1c89b781e49934"
