@@ -141,8 +141,9 @@ public class GenerationStep implements PipelineStep {
     }
     
     private void persistConversation(RagContext context, String userQuery, String aiReply) {
+    	ChatSession session = context.getSession();
         try {
-            ChatSession session = context.getSession();
+            
             ChatMemory chatMemory = context.getChatMemory();
             
             chatMemory.add(UserMessage.from(userQuery));
@@ -153,7 +154,7 @@ public class GenerationStep implements PipelineStep {
 
             log.info("Successfully persisted conversation for session {}", session.getId());
         } catch (Exception e) {
-            //log.error("Failed to persist conversation for session {}: {}", session.getId(), e.getMessage(), e);
+            log.error("Failed to persist conversation for session {}: {}", session.getId(), e.getMessage(), e);
         }
     }
     
