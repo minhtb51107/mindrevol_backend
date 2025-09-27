@@ -69,6 +69,14 @@ dependencies {
     
     implementation 'com.squareup.okhttp3:okhttp:4.12.0'
 	implementation 'com.google.code.gson:gson:2.10.1' // Để xử lý JSON
+	
+	// GIỮ LẠI DÒNG NÀY
+	//implementation 'com.pgvector:pgvector:0.1.5'
+	
+	// https://mvnrepository.com/artifact/io.hypersistence/hypersistence-utils-hibernate-63
+	//implementation("io.hypersistence:hypersistence-utils-hibernate-63:3.11.0")
+
+	//implementation 'io.hypersistence:hypersistence-utils-hibernate-63:3.7.0'
     
     //implementation platform("org.springframework.ai:spring-ai-bom:1.1.0-M1")
 	//implementation "org.springframework.ai:spring-ai-starter-model-openai"

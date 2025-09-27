@@ -1,23 +1,18 @@
-// src/main/java/com/example/demo/service/chat/agent/OrchestratorService.java
 package com.example.demo.service.chat.agent;
 
 import com.example.demo.service.chat.ChatMessageService;
-// ✅ 1. Thay thế import từ Tracked... thành RoutingTracked...
-import com.example.demo.service.chat.integration.RoutingTrackedChatLanguageModel; 
+import com.example.demo.service.chat.QuestionAnswerCacheService; // ✅ 1. IMPORT
+import com.example.demo.service.chat.integration.RoutingTrackedChatLanguageModel;
 import com.example.demo.service.chat.orchestration.context.RagContext;
 import dev.langchain4j.data.message.AiMessage;
+import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.model.output.Response;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired; // Thêm Autowired nếu thiếu
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -25,13 +20,12 @@ import java.util.stream.Collectors;
 @Service
 public class OrchestratorService {
 
-    // ✅ 2. Thay thế TrackedChatLanguageModel bằng RoutingTrackedChatLanguageModel
     private final RoutingTrackedChatLanguageModel routingTrackedChatLanguageModel;
     private final ChatMessageService chatMessageService;
+    private final QuestionAnswerCacheService cacheService; // ✅ 2. THÊM DEPENDENCY
     private final Map<String, Agent> agents;
     private final Agent defaultAgent;
 
-    // ✅ TẠO MỘT DANH SÁCH CÁC CÂU CHÀO HỎI ĐƠN GIẢN
     private static final Set<String> SIMPLE_GREETINGS = new HashSet<>(Arrays.asList(
             "hi", "hello", "xin chào", "chào bạn", "chào", "helo", "alo"
     ));
@@ -39,13 +33,14 @@ public class OrchestratorService {
     @Autowired
     public OrchestratorService(List<Agent> agentList,
                                RoutingTrackedChatLanguageModel routingTrackedChatLanguageModel,
-                               ChatMessageService chatMessageService) {
+                               ChatMessageService chatMessageService,
+                               QuestionAnswerCacheService cacheService) { // ✅ 3. INJECT QUA CONSTRUCTOR
         this.chatMessageService = chatMessageService;
         this.routingTrackedChatLanguageModel = routingTrackedChatLanguageModel;
-
+        this.cacheService = cacheService; // ✅ 3. KHỞI TẠO
         this.agents = agentList.stream()
                 .collect(Collectors.toMap(Agent::getName, Function.identity()));
-        this.defaultAgent = this.agents.get("RAGAgent"); 
+        this.defaultAgent = this.agents.get("RAGAgent");
 
         if (this.agents.get("RAGAgent") == null || this.agents.get("ChitChatAgent") == null || this.agents.get("MemoryQueryAgent") == null || this.agents.get("ToolAgent") == null) {
             throw new IllegalStateException("One or more required agents (RAGAgent, ChitChatAgent, MemoryQueryAgent, ToolAgent) not found!");
@@ -53,60 +48,98 @@ public class OrchestratorService {
         log.info("Orchestrator initialized with {} agents: {}", agents.size(), agents.keySet());
     }
 
-    public String orchestrate(String userMessage, RagContext context) {
-        // ✅ BƯỚC 1: KIỂM TRA QUY TẮC ĐƠN GIẢN TRƯỚC KHI GỌI LLM
-        // Bỏ qua việc gọi LLM đắt đỏ nếu đây là một câu chào hỏi đơn giản.
+    // ✅ 4. SỬA SIGNATURE CỦA PHƯƠNG THỨC ĐỂ NHẬN `regenerate`
+    public String orchestrate(String userMessage, RagContext context, boolean regenerate) {
+        
+        // --- LOGIC CACHING ---
+    	// ✅ 1. LẤY TIN NHẮN CUỐI CÙNG TỪ BỘ NHỚ
+        String lastBotMessage = getLastBotMessage(context.getChatMemory().messages());
+
+        // --- LOGIC CACHING (ĐÃ CẬP NHẬT) ---
+        if (!regenerate) {
+            // ✅ 2. TRUYỀN lastBotMessage VÀO HÀM TÌM KIẾM
+            Optional<String> cachedAnswer = cacheService.findCachedAnswer(userMessage, lastBotMessage);
+            if (cachedAnswer.isPresent()) {
+                log.info("Cache hit for session {}. Trả về câu trả lời từ cache.", context.getSession().getId());
+                String answerFromCache = cachedAnswer.get();
+                saveConversationAndUpdateMemory(context, userMessage, answerFromCache);
+                return answerFromCache;
+            }
+        }
+        log.info("Cache miss or regenerate request for session {}.", context.getSession().getId());
+        // --- KẾT THÚC LOGIC CACHING ---
+
+        
+        // --- LUỒNG XỬ LÝ HIỆN TẠI ---
         if (isSimpleGreeting(userMessage)) {
             log.info("Simple greeting detected. Routing directly to ChitChatAgent.");
             Agent chitChatAgent = agents.get("ChitChatAgent");
             if (chitChatAgent != null) {
-                // Thực thi agent và lấy câu trả lời
                 chitChatAgent.execute(context);
                 String response = context.getReply();
-
-                // Vẫn lưu cuộc hội thoại như bình thường
                 if (response != null && !response.isEmpty()) {
+                    // Không cần lưu cache cho câu chào hỏi đơn giản
                     saveConversationAndUpdateMemory(context, userMessage, response);
                 }
                 return response;
             }
         }
-
-        // Nếu không phải câu chào hỏi đơn giản, tiếp tục luồng xử lý cũ
+        
         Agent chosenAgent = chooseAgent(userMessage, context);
-        
         chosenAgent.execute(context);
-        String response = context.getReply();
-        
-        if (response != null && !response.isEmpty()) {
-            saveConversationAndUpdateMemory(context, userMessage, response);
+        String newAnswer = context.getReply();
+
+        if (newAnswer != null && !newAnswer.isEmpty()) {
+            // ✅ 3. TRUYỀN lastBotMessage VÀO HÀM LƯU
+            cacheService.saveToCache(userMessage, newAnswer, lastBotMessage);
+            saveConversationAndUpdateMemory(context, userMessage, newAnswer);
         }
 
-        return response;
+        return newAnswer;
     }
 
+    // Phương thức `orchestrate` cũ không còn `regenerate` sẽ gây lỗi,
+    // ta tạo một phiên bản overload để tương thích ngược (hoặc xóa đi nếu không cần).
+    public String orchestrate(String userMessage, RagContext context) {
+        return this.orchestrate(userMessage, context, false);
+    }
+    
+
     /**
-     * ✅ BƯỚC 2: TẠO PHƯƠNG THỨC KIỂM TRA (HELPER METHOD)
-     * Kiểm tra xem tin nhắn của người dùng có phải là một lời chào đơn giản hay không.
-     * @param input Tin nhắn từ người dùng.
-     * @return true nếu là lời chào, ngược lại là false.
+     * ✅ 4. THÊM PHƯƠNG THỨC HELPER ĐỂ LẤY TIN NHẮN CUỐI CÙNG CỦA BOT
+     * Lấy tin nhắn cuối cùng trong lịch sử, nếu là của AI thì trả về nội dung.
+     * @param messages Lịch sử cuộc trò chuyện
+     * @return Nội dung tin nhắn cuối cùng của AI, hoặc null nếu không có.
      */
+    private String getLastBotMessage(List<ChatMessage> messages) {
+        if (messages == null || messages.isEmpty()) {
+            return null;
+        }
+
+        // Lấy tin nhắn cuối cùng
+        ChatMessage lastMessage = messages.get(messages.size() - 1);
+
+        // Kiểm tra xem có phải là tin nhắn của AI không
+        if (lastMessage instanceof AiMessage) {
+            return lastMessage.text();
+        }
+
+        return null;
+    }
+
+
     private boolean isSimpleGreeting(String input) {
         if (input == null || input.isEmpty()) {
             return false;
         }
-        // Chuẩn hóa input: chuyển về chữ thường và xóa khoảng trắng thừa
         String normalizedInput = input.toLowerCase().trim();
         return SIMPLE_GREETINGS.contains(normalizedInput);
     }
 
-
     private Agent chooseAgent(String userMessage, RagContext context) {
         String prompt = buildOrchestratorPrompt(userMessage);
-
         log.info("Choosing agent for query: '{}'", userMessage);
 
-        // ✅ 4. Gọi LLM thông qua service routing mới, rẻ hơn
         Response<AiMessage> response = routingTrackedChatLanguageModel.generate(
                 Collections.singletonList(new UserMessage(prompt)),
                 context.getUser().getId(),
@@ -127,10 +160,11 @@ public class OrchestratorService {
         return chosenAgent;
     }
     
-    // Phương thức này không thay đổi
     private String buildOrchestratorPrompt(String userInput) {
         StringBuilder promptBuilder = new StringBuilder();
         promptBuilder.append("Bạn là một hệ thống định tuyến AI chuyên nghiệp. Nhiệm vụ của bạn là phân tích câu hỏi của người dùng và chọn một agent chuyên biệt phù hợp nhất để xử lý nó.\n");
+     // ✅ THÊM HƯỚNG DẪN MỚI
+        promptBuilder.append("QUAN TRỌNG: Nếu câu hỏi liên quan đến dữ liệu thay đổi liên tục như thời tiết, thời gian, hoặc giá cổ phiếu, hãy ưu tiên chọn agent có khả năng sử dụng công cụ (ToolAgent).\n");
         promptBuilder.append("Chỉ trả lời bằng tên của agent được chọn. KHÔNG thêm bất kỳ lời giải thích hay dấu câu nào.\n\n");
         promptBuilder.append("Các agent có sẵn:\n");
 
@@ -144,7 +178,6 @@ public class OrchestratorService {
         return promptBuilder.toString();
     }
 
-    // Phương thức này không thay đổi
     private void saveConversationAndUpdateMemory(RagContext context, String userMessage, String assistantResponse) {
         try {
             chatMessageService.saveMessage(context.getSession(), "user", userMessage);

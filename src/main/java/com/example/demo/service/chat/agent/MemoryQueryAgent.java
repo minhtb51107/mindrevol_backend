@@ -1,4 +1,3 @@
-// src/main/java/com/example/demo/service/chat/agent/MemoryQueryAgent.java
 package com.example.demo.service.chat.agent;
 
 import com.example.demo.model.chat.ChatMessage;
@@ -34,30 +33,26 @@ public class MemoryQueryAgent implements Agent {
     public RagContext execute(RagContext context) {
         log.debug("Executing FINAL MemoryQueryAgent for query: '{}'", context.getInitialQuery());
 
-        // 1. Lấy lịch sử đã được lưu trong DB (tính đến trước lượt này)
         List<ChatMessage> historyFromDb = chatMessageService.getMessagesForSession(
                 context.getSession().getId(),
                 context.getUser()
         );
 
-        // 2. Lấy câu hỏi hiện tại của người dùng từ context
         String currentUserQuery = context.getInitialQuery();
-
-        // 3. Xây dựng prompt kết hợp cả hai nguồn
         String prompt = buildFinalPrompt(historyFromDb, currentUserQuery);
 
-        // 4. Gọi LLM và trả về kết quả
         String response = chatLanguageModel.generate(prompt);
         context.setReply(response);
         return context;
     }
 
+    /**
+     * ✅ ĐÃ CẬP NHẬT PROMPT ĐỂ RÕ RÀNG VÀ CHÍNH XÁC HƠN
+     */
     private String buildFinalPrompt(List<ChatMessage> dbHistory, String currentUserQuery) {
         StringBuilder promptBuilder = new StringBuilder();
         
-        // 1. Định hình Persona ngay từ đầu
-        promptBuilder.append("Bạn là một trợ lý AI cá tính, thông minh và có chút hài hước. Hãy nói chuyện với người dùng một cách tự nhiên, thân thiện như một người bạn (có thể xưng hô 'tôi' và gọi người dùng là 'bạn' hoặc 'ông' nếu phù hợp). Đừng ngại sử dụng emojis để thể hiện cảm xúc. TUYỆT ĐỐI không trả lời một cách máy móc.\n\n");
-
+        promptBuilder.append("Bạn là một trợ lý AI cá tính, thông minh và có chút hài hước. Hãy nói chuyện với người dùng một cách tự nhiên, thân thiện như một người bạn. Đừng ngại sử dụng emojis để thể hiện cảm xúc.\n\n");
         promptBuilder.append("--- BẮT ĐẦU LỊCH SỬ TRÒ CHUYỆN ---\n");
 
         if (dbHistory.isEmpty()) {
@@ -71,14 +66,14 @@ public class MemoryQueryAgent implements Agent {
 
         promptBuilder.append("--- KẾT THÚC LỊCH SỬ ---\n\n");
 
-        // 2. Hướng dẫn chi tiết hơn về phong cách trả lời
-        promptBuilder.append("HƯỚNG DẪN ĐẶC BIỆT DÀNH CHO BẠN:\n");
+        promptBuilder.append("HƯỚNG DẪN DÀNH CHO BẠN:\n");
         promptBuilder.append("1. Nhiệm vụ của bạn là trả lời câu hỏi CUỐI CÙNG của người dùng: \"").append(currentUserQuery.trim()).append("\"\n");
-        promptBuilder.append("2. Hãy trả lời dựa trên LỊCH SỬ TRÒ CHUYỆN ở trên.\n");
-        promptBuilder.append("3. Nếu người dùng hỏi 'tôi vừa nhắn gì?', hãy nhìn vào tin nhắn 'Người dùng' ngay trước đó trong lịch sử, trích dẫn lại nó và thêm một bình luận thông minh hoặc hài hước. Ví dụ: 'Ông vừa nhắn đúng một chữ gọn lỏn: “hi” 😎. Đúng kiểu test xem tôi có bật lại không ấy.'\n");
-        promptBuilder.append("4. Giữ vững phong cách cá tính, thông minh và thân thiện của bạn. Thêm icon (emoji) phù hợp vào cuối câu trả lời nhé!\n\n");
         
-        promptBuilder.append("Câu trả lời của bạn (với phong cách của một người bạn AI cá tính):");
+        // ✅ HƯỚNG DẪN MỚI, CỰC KỲ QUAN TRỌNG
+        promptBuilder.append("2. QUAN TRỌNG: Để trả lời, hãy chỉ tập trung vào những tin nhắn GẦN NHẤT trong lịch sử. Nếu người dùng hỏi 'tôi vừa nhắn gì?', bạn PHẢI tìm tin nhắn 'Người dùng' cuối cùng TRƯỚC câu hỏi hiện tại, và trả lời dựa trên tin nhắn đó. Ví dụ: 'Bạn vừa hỏi 'bây giờ là mấy giờ?'.'\n");
+        
+        promptBuilder.append("3. Giữ vững phong cách cá tính, thông minh và thân thiện. Thêm emoji phù hợp vào cuối câu trả lời nhé!\n\n");
+        promptBuilder.append("Câu trả lời của bạn:");
 
         return promptBuilder.toString();
     }

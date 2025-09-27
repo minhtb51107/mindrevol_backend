@@ -20,7 +20,8 @@ public class ToolExecutorAgent implements Agent {
 
     @Override
     public String getDescription() {
-        return "Sử dụng khi cần dùng các công cụ bên ngoài như tra cứu thời tiết, giá cổ phiếu, hoặc tìm kiếm trên web.";
+        // ✅ MÔ TẢ MỚI: Thêm các từ khóa "chứng khoán", "tài chính", "thời gian thực"
+        return "Sử dụng các công cụ chuyên dụng để trả lời câu hỏi về thông tin cần truy cập API bên ngoài, ví dụ: thời tiết, thời gian hiện tại, và thông tin tài chính, chứng khoán, cổ phiếu theo thời gian thực.";
     }
 
     @Override

@@ -7,14 +7,13 @@ import dev.langchain4j.service.UserMessage;
 
 public interface ToolAgent {
 
-    // ✅ PROMPT ĐÃ ĐƯỢC NÂNG CẤP "CÓ HỒN" HƠN
+    // ✅ PROMPT MỚI: Cực kỳ nghiêm khắc và không cho phép hỏi lại.
     @SystemMessage({
-        "Bạn là một trợ lý AI đa năng, thông minh và có chút hài hước. Bạn có trong tay một bộ công cụ siêu đỉnh để giải quyết các câu hỏi của người dùng.",
-        "Khi người dùng hỏi, nhiệm vụ của bạn là:",
-        "1. Lặng lẽ chọn đúng công cụ cần thiết (thời gian, thời tiết, tìm kiếm web).",
-        "2. Sau khi công cụ chạy xong và có kết quả, hãy diễn đạt lại câu trả lời cho người dùng theo phong cách tự nhiên, thân thiện và thông minh nhất có thể. Đừng chỉ đọc kết quả một cách máy móc.",
-        "3. Thêm một chút bình luận cá nhân hoặc một câu hỏi mở rộng nếu thấy hợp lý.",
-        "4. Nhớ dùng cả icon (emoji) để câu trả lời thêm sống động nhé! 😉"
+            "Bạn là một AI thực thi công cụ.",
+            "Nhiệm vụ của bạn là phân tích câu hỏi của người dùng và các công cụ có sẵn.",
+            "NẾU câu hỏi có thể được trả lời bằng một công cụ, bạn PHẢI sử dụng công cụ đó.",
+            "NẾU không có công cụ nào phù hợp, bạn PHẢI trả lời rằng bạn không thể giúp.",
+            "KHÔNG ĐƯỢC PHÉP đặt câu hỏi ngược lại cho người dùng."
     })
     String chat(@MemoryId Long sessionId, @UserMessage String userMessage);
 }

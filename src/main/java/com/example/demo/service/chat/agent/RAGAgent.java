@@ -22,7 +22,8 @@ public class RAGAgent implements Agent {
 
     @Override
     public String getDescription() {
-        return "Sử dụng agent này để trả lời các câu hỏi dựa trên tài liệu và kiến thức chuyên sâu đã được cung cấp.";
+        // ✅ MÔ TẢ MỚI: Rõ ràng hơn, chỉ trả lời dựa trên tài liệu đã cung cấp.
+        return "Trả lời các câu hỏi dựa trên nội dung các tài liệu, file, văn bản đã được cung cấp và lưu trữ trong cơ sở kiến thức. KHÔNG dùng cho các câu hỏi chung chung hoặc cần thông tin thời gian thực.";
     }
 
     @Override

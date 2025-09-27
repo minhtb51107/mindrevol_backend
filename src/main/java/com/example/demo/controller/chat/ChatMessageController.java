@@ -76,7 +76,10 @@ public class ChatMessageController {
             @PathVariable("sessionId") Long sessionId,
             @RequestHeader("Authorization") String authHeader,
             @RequestParam("content") String content,
-            @RequestParam(value = "file", required = false) MultipartFile file) {
+            @RequestParam(value = "file", required = false) MultipartFile file,
+            // ✅ 1. THÊM THAM SỐ 'regenerate' VÀO ENDPOINT
+            // Mặc định là 'false' nếu không được cung cấp.
+            @RequestParam(value = "regenerate", defaultValue = "false") boolean regenerate) {
 
         User user = extractUserFromAuth(authHeader);
 
@@ -84,7 +87,8 @@ public class ChatMessageController {
             file = null;
         }
 
-        String aiResponse = chatAIService.processMessages(sessionId, content, file, user);
+        // ✅ 2. TRUYỀN CỜ 'regenerate' VÀO SERVICE
+        String aiResponse = chatAIService.processMessages(sessionId, content, file, user, regenerate);
         return ResponseEntity.ok(aiResponse);
     }
 
