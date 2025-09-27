@@ -1,5 +1,4 @@
 // src/main/java/com/example/demo/config/LangChain4jConfig.java
-
 package com.example.demo.config;
 
 import java.time.Duration;
@@ -8,11 +7,13 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.context.annotation.Primary; // ✅ 1. Thêm import này
+import org.springframework.context.annotation.Primary;
 
+import com.example.demo.service.chat.agent.FinancialAnalystAgent;
 import com.example.demo.service.chat.agent.ToolAgent;
 import com.example.demo.service.chat.orchestration.rules.QueryRouterService;
 import com.example.demo.service.chat.tools.SerperWebSearchEngine;
+import com.example.demo.service.chat.tools.StockTool; // ✅ 1. Thêm import cho StockTool
 import com.example.demo.service.chat.tools.TimeTool;
 import com.example.demo.service.chat.tools.WeatherTool;
 
@@ -41,7 +42,7 @@ public class LangChain4jConfig {
     private String chatModelName;
 
     @Bean
-    @Primary // ✅ 2. Đánh dấu đây là bean mặc định cho ChatLanguageModel
+    @Primary
     public ChatLanguageModel chatLanguageModel() {
         return OpenAiChatModel.builder()
                 .apiKey(openAiApiKey)
@@ -99,17 +100,23 @@ public class LangChain4jConfig {
                                ChatMemoryProvider chatMemoryProvider,
                                SerperWebSearchEngine serperWebSearchEngine,
                                TimeTool timeTool,
-                               WeatherTool weatherTool) {
+                               WeatherTool weatherTool,
+                               StockTool stockTool) { // ✅ 2. Thêm StockTool vào tham số
         return AiServices.builder(ToolAgent.class)
                 .chatLanguageModel(chatLanguageModel)
                 .chatMemoryProvider(chatMemoryProvider)
-                .tools(serperWebSearchEngine, timeTool, weatherTool)
+                .tools(serperWebSearchEngine, timeTool, weatherTool, stockTool) // ✅ 3. Thêm stockTool vào danh sách
                 .build();
     }
     
     @Bean
     public QueryRouterService queryRouterService(ChatLanguageModel chatLanguageModel) {
         return AiServices.create(QueryRouterService.class, chatLanguageModel);
+    }
+    
+    @Bean
+    public FinancialAnalystAgent financialAnalystAgent(ChatLanguageModel chatLanguageModel) {
+        return AiServices.create(FinancialAnalystAgent.class, chatLanguageModel);
     }
     
     @Bean

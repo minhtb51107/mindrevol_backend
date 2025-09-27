@@ -1,7 +1,7 @@
 package com.example.demo.service.chat.agent;
 
 import com.example.demo.service.chat.ChatMessageService;
-import com.example.demo.service.chat.QuestionAnswerCacheService; // ✅ 1. IMPORT
+import com.example.demo.service.chat.QuestionAnswerCacheService;
 import com.example.demo.service.chat.integration.RoutingTrackedChatLanguageModel;
 import com.example.demo.service.chat.orchestration.context.RagContext;
 import dev.langchain4j.data.message.AiMessage;
@@ -22,9 +22,12 @@ public class OrchestratorService {
 
     private final RoutingTrackedChatLanguageModel routingTrackedChatLanguageModel;
     private final ChatMessageService chatMessageService;
-    private final QuestionAnswerCacheService cacheService; // ✅ 2. THÊM DEPENDENCY
+    private final QuestionAnswerCacheService cacheService;
     private final Map<String, Agent> agents;
     private final Agent defaultAgent;
+    
+    // ✅ 1. THÊM DEPENDENCY CHO AGENT PHÂN TÍCH
+    private final FinancialAnalystAgent financialAnalystAgent;
 
     private static final Set<String> SIMPLE_GREETINGS = new HashSet<>(Arrays.asList(
             "hi", "hello", "xin chào", "chào bạn", "chào", "helo", "alo"
@@ -34,30 +37,29 @@ public class OrchestratorService {
     public OrchestratorService(List<Agent> agentList,
                                RoutingTrackedChatLanguageModel routingTrackedChatLanguageModel,
                                ChatMessageService chatMessageService,
-                               QuestionAnswerCacheService cacheService) { // ✅ 3. INJECT QUA CONSTRUCTOR
+                               QuestionAnswerCacheService cacheService,
+                               FinancialAnalystAgent financialAnalystAgent) { // ✅ 2. INJECT AGENT MỚI
         this.chatMessageService = chatMessageService;
         this.routingTrackedChatLanguageModel = routingTrackedChatLanguageModel;
-        this.cacheService = cacheService; // ✅ 3. KHỞI TẠO
+        this.cacheService = cacheService;
         this.agents = agentList.stream()
                 .collect(Collectors.toMap(Agent::getName, Function.identity()));
         this.defaultAgent = this.agents.get("RAGAgent");
+        
+        // ✅ 2. KHỞI TẠO AGENT MỚI
+        this.financialAnalystAgent = financialAnalystAgent;
 
         if (this.agents.get("RAGAgent") == null || this.agents.get("ChitChatAgent") == null || this.agents.get("MemoryQueryAgent") == null || this.agents.get("ToolAgent") == null) {
             throw new IllegalStateException("One or more required agents (RAGAgent, ChitChatAgent, MemoryQueryAgent, ToolAgent) not found!");
         }
         log.info("Orchestrator initialized with {} agents: {}", agents.size(), agents.keySet());
     }
-
-    // ✅ 4. SỬA SIGNATURE CỦA PHƯƠNG THỨC ĐỂ NHẬN `regenerate`
+    
     public String orchestrate(String userMessage, RagContext context, boolean regenerate) {
         
-        // --- LOGIC CACHING ---
-    	// ✅ 1. LẤY TIN NHẮN CUỐI CÙNG TỪ BỘ NHỚ
         String lastBotMessage = getLastBotMessage(context.getChatMemory().messages());
 
-        // --- LOGIC CACHING (ĐÃ CẬP NHẬT) ---
         if (!regenerate) {
-            // ✅ 2. TRUYỀN lastBotMessage VÀO HÀM TÌM KIẾM
             Optional<String> cachedAnswer = cacheService.findCachedAnswer(userMessage, lastBotMessage);
             if (cachedAnswer.isPresent()) {
                 log.info("Cache hit for session {}. Trả về câu trả lời từ cache.", context.getSession().getId());
@@ -67,10 +69,31 @@ public class OrchestratorService {
             }
         }
         log.info("Cache miss or regenerate request for session {}.", context.getSession().getId());
-        // --- KẾT THÚC LOGIC CACHING ---
-
         
-        // --- LUỒNG XỬ LÝ HIỆN TẠI ---
+        // ✅ 3. TRIỂN KHAI LOGIC PHÂN TÍCH NỐI TIẾP
+//        List<ChatMessage> history = context.getChatMemory().messages();
+//        if (isFollowUpAnalysisQuestion(userMessage) && !history.isEmpty()) {
+//            ChatMessage lastAiMessage = findLastAiMessage(history);
+//            
+//            if (lastAiMessage != null && isStockData(lastAiMessage.text())) {
+//                log.info("Phát hiện câu hỏi phân tích nối tiếp. Kích hoạt FinancialAnalystAgent.");
+//                
+//                String analysisRequest = String.format(
+//                    "Câu hỏi của người dùng: '%s'. Dữ liệu chứng khoán để phân tích: '%s'",
+//                    userMessage,
+//                    lastAiMessage.text()
+//                );
+//
+//                String analysisResult = financialAnalystAgent.analyzeStockData(analysisRequest);
+//                
+//                context.setReply(analysisResult);
+//                saveConversationAndUpdateMemory(context, userMessage, analysisResult);
+//                cacheService.saveToCache(userMessage, analysisResult, lastBotMessage);
+//                return analysisResult;
+//            }
+//        }
+        
+        // --- LUỒNG XỬ LÝ ĐỊNH TUYẾN CŨ ---
         if (isSimpleGreeting(userMessage)) {
             log.info("Simple greeting detected. Routing directly to ChitChatAgent.");
             Agent chitChatAgent = agents.get("ChitChatAgent");
@@ -78,7 +101,6 @@ public class OrchestratorService {
                 chitChatAgent.execute(context);
                 String response = context.getReply();
                 if (response != null && !response.isEmpty()) {
-                    // Không cần lưu cache cho câu chào hỏi đơn giản
                     saveConversationAndUpdateMemory(context, userMessage, response);
                 }
                 return response;
@@ -90,7 +112,6 @@ public class OrchestratorService {
         String newAnswer = context.getReply();
 
         if (newAnswer != null && !newAnswer.isEmpty()) {
-            // ✅ 3. TRUYỀN lastBotMessage VÀO HÀM LƯU
             cacheService.saveToCache(userMessage, newAnswer, lastBotMessage);
             saveConversationAndUpdateMemory(context, userMessage, newAnswer);
         }
@@ -98,36 +119,58 @@ public class OrchestratorService {
         return newAnswer;
     }
 
-    // Phương thức `orchestrate` cũ không còn `regenerate` sẽ gây lỗi,
-    // ta tạo một phiên bản overload để tương thích ngược (hoặc xóa đi nếu không cần).
     public String orchestrate(String userMessage, RagContext context) {
         return this.orchestrate(userMessage, context, false);
     }
     
+    // ✅ 4. THÊM CÁC PHƯƠNG THỨC HELPER CHO LOGIC MỚI
 
     /**
-     * ✅ 4. THÊM PHƯƠNG THỨC HELPER ĐỂ LẤY TIN NHẮN CUỐI CÙNG CỦA BOT
-     * Lấy tin nhắn cuối cùng trong lịch sử, nếu là của AI thì trả về nội dung.
-     * @param messages Lịch sử cuộc trò chuyện
-     * @return Nội dung tin nhắn cuối cùng của AI, hoặc null nếu không có.
+     * Kiểm tra xem câu hỏi có phải là một yêu cầu phân tích dữ liệu đã cho trước đó không.
      */
-    private String getLastBotMessage(List<ChatMessage> messages) {
-        if (messages == null || messages.isEmpty()) {
-            return null;
-        }
-
-        // Lấy tin nhắn cuối cùng
-        ChatMessage lastMessage = messages.get(messages.size() - 1);
-
-        // Kiểm tra xem có phải là tin nhắn của AI không
-        if (lastMessage instanceof AiMessage) {
-            return lastMessage.text();
-        }
-
-        return null;
+    private boolean isFollowUpAnalysisQuestion(String query) {
+        if (query == null) return false;
+        String lowerCaseQuery = query.toLowerCase();
+        return lowerCaseQuery.contains("dựa trên") ||
+               lowerCaseQuery.contains("cho thấy điều gì") ||
+               lowerCaseQuery.contains("nghĩa là gì") ||
+               lowerCaseQuery.contains("phân tích");
     }
 
+    /**
+     * Kiểm tra xem một chuỗi văn bản có chứa dữ liệu chứng khoán hay không.
+     */
+    private boolean isStockData(String text) {
+        if (text == null) return false;
+        String lowerCaseText = text.toLowerCase();
+        return lowerCaseText.contains("giá hiện tại là") ||
+               lowerCaseText.contains("thay đổi trong ngày");
+    }
 
+    /**
+     * Tìm tin nhắn cuối cùng được gửi bởi AI (assistant) trong lịch sử hội thoại.
+     */
+    private ChatMessage findLastAiMessage(List<ChatMessage> history) {
+        if (history == null || history.isEmpty()) {
+            return null;
+        }
+        for (int i = history.size() - 1; i >= 0; i--) {
+            ChatMessage message = history.get(i);
+            // Sử dụng instanceof để kiểm tra kiểu tin nhắn một cách an toàn
+            if (message instanceof AiMessage) {
+                return message;
+            }
+        }
+        return null;
+    }
+    
+    // --- CÁC PHƯƠNG THỨC CŨ VẪN GIỮ NGUYÊN ---
+
+    private String getLastBotMessage(List<ChatMessage> messages) {
+        ChatMessage lastAiMessage = findLastAiMessage(messages);
+        return (lastAiMessage != null) ? lastAiMessage.text() : null;
+    }
+    
     private boolean isSimpleGreeting(String input) {
         if (input == null || input.isEmpty()) {
             return false;
@@ -163,7 +206,6 @@ public class OrchestratorService {
     private String buildOrchestratorPrompt(String userInput) {
         StringBuilder promptBuilder = new StringBuilder();
         promptBuilder.append("Bạn là một hệ thống định tuyến AI chuyên nghiệp. Nhiệm vụ của bạn là phân tích câu hỏi của người dùng và chọn một agent chuyên biệt phù hợp nhất để xử lý nó.\n");
-     // ✅ THÊM HƯỚNG DẪN MỚI
         promptBuilder.append("QUAN TRỌNG: Nếu câu hỏi liên quan đến dữ liệu thay đổi liên tục như thời tiết, thời gian, hoặc giá cổ phiếu, hãy ưu tiên chọn agent có khả năng sử dụng công cụ (ToolAgent).\n");
         promptBuilder.append("Chỉ trả lời bằng tên của agent được chọn. KHÔNG thêm bất kỳ lời giải thích hay dấu câu nào.\n\n");
         promptBuilder.append("Các agent có sẵn:\n");
