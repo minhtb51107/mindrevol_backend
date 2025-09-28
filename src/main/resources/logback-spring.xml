@@ -1,4 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
 <configuration>
+
     <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
 
     <springProperty scope="context" name="springAppName" source="spring.application.name" defaultValue="mindrevol-backend"/>
@@ -18,7 +20,24 @@
         </encoder>
     </appender>
 
+    <appender name="Console" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder class="ch.qos.logback.classic.encoder.PatternLayoutEncoder">
+            <Pattern>
+                %black(%d{ISO8601}) %highlight(%-5level) [%blue(%t)] %yellow(%C{1}): %msg%n%throwable
+            </Pattern>
+        </encoder>
+    </appender>
     <root level="INFO">
         <appender-ref ref="CONSOLE_JSON"/>
+        <appender-ref ref="Console"/>
     </root>
+
+    <logger name="dev.langchain4j" level="DEBUG" additivity="false">
+        <appender-ref ref="Console"/>
+    </logger>
+
+    <logger name="com.example.demo" level="TRACE" additivity="false">
+        <appender-ref ref="Console"/>
+    </logger>
+
 </configuration>

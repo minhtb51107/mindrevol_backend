@@ -21,6 +21,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 public class RagContext {
 
     // --- Đầu vào ban đầu ---
+	private String query; 
     private String initialQuery;
     private final User user;
     private final ChatSession session;

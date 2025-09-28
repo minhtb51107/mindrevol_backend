@@ -46,17 +46,21 @@ public class ToolExecutorAgent implements Agent {
 
     @Override
     public RagContext execute(RagContext context) {
-        String userQuestion = context.getInitialQuery();
-        log.debug("Executing Research Workflow for query: '{}'", userQuestion);
+        // <<< SỬA LỖI: Thay thế getInitialQuery() bằng getQuery() >>>
+        // Giờ đây, 'rewrittenQuestion' sẽ chứa câu hỏi đã được làm giàu ngữ cảnh
+        // ví dụ: "Search the internet for the Prime Minister of Japan."
+        String rewrittenQuestion = context.getQuery();
+        log.debug("Executing Research Workflow for rewritten query: '{}'", rewrittenQuestion);
 
-        // BƯỚC 1: TẠO CÁC TRUY VẤN TÌM KIẾM
+        // BƯỚC 1: TẠO CÁC TRUY VẤN TÌM KIẾM DỰA TRÊN CÂU HỎI ĐÚNG
         SearchQueryGenerator queryGenerator = new SearchQueryGenerator();
-        queryGenerator.question = userQuestion;
+        queryGenerator.question = rewrittenQuestion; // <<< SỬA LỖI
         Prompt prompt = StructuredPromptProcessor.toPrompt(queryGenerator);
         
-        // SỬA LỖI: Gọi generate(String) và nhận kết quả là String trực tiếp.
         String rawQueries = chatLanguageModel.generate(prompt.text());
-        List<String> searchQueries = Arrays.asList(rawQueries.split("\n"));
+        List<String> searchQueries = Arrays.stream(rawQueries.split("\n"))
+                                           .filter(q -> !q.trim().isEmpty())
+                                           .collect(Collectors.toList());
         log.info("Generated search queries: {}", searchQueries);
 
         // BƯỚC 2: TÌM KIẾM VÀ LỌC KẾT QUẢ
@@ -84,7 +88,7 @@ public class ToolExecutorAgent implements Agent {
                 })
                 .collect(Collectors.joining("\n\n"));
 
-        // BƯỚC 4: TỔNG HỢP VÀ PHÂN TÍCH
+        // BƯỚC 4: TỔNG HỢP VÀ PHÂN TÍCH DỰA TRÊN CÂU HỎI ĐÚNG
         PromptTemplate finalPromptTemplate = PromptTemplate.from(
                 "Bạn là một trợ lý AI phân tích thông tin chuyên nghiệp. " +
                 "Nhiệm vụ của bạn là dựa vào các nội dung được trích xuất từ nhiều nguồn tin tức và trang web dưới đây, hãy trả lời câu hỏi gốc của người dùng một cách chính xác, khách quan và đầy đủ nhất. " +
@@ -95,11 +99,10 @@ public class ToolExecutorAgent implements Agent {
         );
 
         Map<String, Object> variables = Map.of(
-                "question", userQuestion,
+                "question", rewrittenQuestion, // <<< SỬA LỖI
                 "contents", fetchedContents
         );
         
-        // SỬA LỖI: Gọi generate(String) và nhận kết quả là String trực tiếp.
         String finalAnswer = chatLanguageModel.generate(finalPromptTemplate.apply(variables).text());
 
         context.setReply(finalAnswer);

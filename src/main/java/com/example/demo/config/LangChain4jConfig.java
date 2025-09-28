@@ -1,4 +1,3 @@
-// src/main/java/com/example/demo/config/LangChain4jConfig.java
 package com.example.demo.config;
 
 import java.time.Duration;
@@ -13,7 +12,7 @@ import com.example.demo.service.chat.agent.FinancialAnalystAgent;
 import com.example.demo.service.chat.agent.ToolAgent;
 import com.example.demo.service.chat.orchestration.rules.QueryRouterService;
 import com.example.demo.service.chat.tools.SerperWebSearchEngine;
-import com.example.demo.service.chat.tools.StockTool; // ✅ 1. Thêm import cho StockTool
+import com.example.demo.service.chat.tools.StockTool;
 import com.example.demo.service.chat.tools.TimeTool;
 import com.example.demo.service.chat.tools.WeatherTool;
 
@@ -48,12 +47,34 @@ public class LangChain4jConfig {
                 .apiKey(openAiApiKey)
                 .modelName("gpt-4o")
                 .temperature(0.7)
+                .logRequests(true) // <<< DÒNG NÀY SẼ IN PROMPT RA LOG
+                .logResponses(true)
                 .timeout(Duration.ofSeconds(30))
                 .maxRetries(3)
                 .logRequests(true)
                 .logResponses(true)
                 .build();
     }
+
+    // <<< THAY ĐỔI: THÊM BEAN MỚI ĐỂ GIẢI QUYẾT LỖI >>>
+    /**
+     * Bean này cung cấp một mô hình ngôn ngữ nhanh, chi phí thấp (ví dụ: gpt-3.5-turbo)
+     * dành riêng cho các tác vụ phụ trợ như viết lại câu hỏi trong QueryRewriteService.
+     * Nó được đánh dấu bằng @Qualifier("on-demand-model") để Spring có thể inject chính xác.
+     */
+    @Bean
+    @Qualifier("on-demand-model")
+    public ChatLanguageModel onDemandChatLanguageModel() {
+        return OpenAiChatModel.builder()
+                .apiKey(openAiApiKey)
+                .modelName("gpt-3.5-turbo") // Model nhanh và hiệu quả cho các tác vụ phụ
+                .temperature(0.3) // Nhiệt độ thấp để kết quả ổn định, ít sáng tạo
+                .timeout(Duration.ofSeconds(20))
+                .logRequests(true)
+                .logResponses(true)
+                .build();
+    }
+    // <<< KẾT THÚC THAY ĐỔI >>>
 
     @Bean
     public EmbeddingModel embeddingModel() {
@@ -101,11 +122,11 @@ public class LangChain4jConfig {
                                SerperWebSearchEngine serperWebSearchEngine,
                                TimeTool timeTool,
                                WeatherTool weatherTool,
-                               StockTool stockTool) { // ✅ 2. Thêm StockTool vào tham số
+                               StockTool stockTool) {
         return AiServices.builder(ToolAgent.class)
                 .chatLanguageModel(chatLanguageModel)
                 .chatMemoryProvider(chatMemoryProvider)
-                .tools(serperWebSearchEngine, timeTool, weatherTool, stockTool) // ✅ 3. Thêm stockTool vào danh sách
+                .tools(serperWebSearchEngine, timeTool, weatherTool, stockTool)
                 .build();
     }
     
