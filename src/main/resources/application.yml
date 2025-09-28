@@ -3,12 +3,17 @@
 # ===================================================================
 application:
   cache:
-    # Ngưỡng tương đồng (similarity) để coi một câu hỏi là trùng khớp trong cache.
-    # Giá trị này phụ thuộc vào toán tử bạn dùng trong PGVector:
-    # - Nếu dùng L2 distance (<->), giá trị càng thấp càng tốt (ví dụ: 0.15)
-    # - Nếu dùng Cosine similarity (<=>), giá trị càng gần 1.0 càng tốt (ví dụ: 0.95)
-    # Bắt đầu với một giá trị an toàn.
+    # ✅ Ngưỡng tương đồng cho các loại similarity/distance
+    l2-distance-threshold: 0.2
     similarity-threshold: 0.95
+
+    # ✅ L2 Redis Cache
+    redis-ttl-seconds: 3600     # Thời gian sống của cache trên Redis (1 giờ)
+    cleanup-interval-days: 90   # Chu kỳ dọn dẹp cache
+
+    # ✅ L1 In-Memory Cache (Caffeine)
+    l1-cache-max-size: 1000     # Số lượng mục tối đa trong cache
+    l1-cache-expire-minutes: 5  # Thời gian sống của cache (phút)
 
 # ==========================
 # Datasource & Hikari Config
@@ -16,22 +21,20 @@ application:
 spring:
   datasource:
     hikari:
-      # Thời gian tối đa một kết nối được tồn tại trong pool (ms). 
-      # Hãy đặt thấp hơn thời gian timeout của DB. Ví dụ: 10 phút.
-      max-lifetime: 600000 
-      # Thời gian một kết nối được phép nhàn rỗi (ms). Ví dụ: 5 phút.
-      idle-timeout: 300000
-      # Thời gian chờ để có được kết nối từ pool (ms).
-      connection-timeout: 30000 
-      # Một câu lệnh SQL đơn giản để kiểm tra kết nối có còn sống không.
+      max-lifetime: 600000   # 10 phút
+      idle-timeout: 300000   # 5 phút
+      connection-timeout: 30000
       connection-test-query: "SELECT 1"
 
   data:
     redis:
+      host: localhost   # ✅ Bật lại Redis, chỉnh nếu server khác
+      port: 6379
       repositories:
-        enabled: false
+        enabled: true   # ✅ KÍCH HOẠT LẠI REPOSITORY
+
   flyway:
-    repair: true # Thêm cấu hình flyway vào đây
+    repair: true
 
 # ==========================
 # App Config
@@ -39,7 +42,6 @@ spring:
 app:
   default-pipeline-name: "default-rag"
 
-# Loại bỏ cấp "definitions" thừa
 pipelines:
   default-rag:
     steps:
@@ -51,10 +53,8 @@ pipelines:
       - retrieval
       - generation
 
-# ... các cấu hình khác của bạn
-# Thêm cấu hình cho bước retrieval
 retrieval:
-  max-results: 50 # Số lượng tài liệu tối đa lấy ra để đưa cho reranker
+  max-results: 50
 
 # ==========================
 # API Keys

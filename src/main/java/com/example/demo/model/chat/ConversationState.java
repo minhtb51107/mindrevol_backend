@@ -6,6 +6,9 @@ import lombok.Data;
 import java.time.LocalDateTime;
 import java.util.List;
 
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
+
 @Entity
 @Table(name = "conversation_states")
 @Data
@@ -34,4 +37,19 @@ public class ConversationState {
     @CollectionTable(name = "state_history", joinColumns = @JoinColumn(name = "state_id"))
     @Column(name = "previous_state")
     private List<String> stateHistory;
+    
+    /**
+     * ✅ THÊM MỚI: Trạng thái hành động đang chờ từ người dùng.
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "pending_action", nullable = false)
+    private PendingAction pendingAction = PendingAction.NONE;
+
+    /**
+     * ✅ THÊM MỚI: Lưu trữ ngữ cảnh cho hành động đang chờ dưới dạng JSON.
+     * Ví dụ: {"original_query": "cho tôi biết thêm về ông ấy"}
+     */
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "pending_action_context", columnDefinition = "jsonb")
+    private String pendingActionContext;
 }

@@ -3,11 +3,13 @@ package com.example.demo.service.chat.state;
 
 import com.example.demo.model.chat.ChatSession;
 import com.example.demo.model.chat.ConversationState;
+import com.example.demo.model.chat.PendingAction;
 import com.example.demo.repository.chat.ChatSessionRepository; // THÊM IMPORT NÀY
 import com.example.demo.repository.chat.ConversationStateRepository.ConversationStateRepository;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.Optional;
@@ -37,6 +39,15 @@ public class ConversationStateService {
         state.setCurrentTopic(newTopic);
         state.setLastStateChange(LocalDateTime.now());
         
+        stateRepository.save(state);
+    }
+    
+    // ✅ THÊM PHƯƠNG THỨC MỚI: Cập nhật hành động đang chờ
+    @Transactional
+    public void updatePendingAction(Long sessionId, PendingAction action, String contextJson) {
+        ConversationState state = getOrCreateState(sessionId);
+        state.setPendingAction(action);
+        state.setPendingActionContext(contextJson);
         stateRepository.save(state);
     }
     
@@ -72,6 +83,7 @@ public class ConversationStateService {
         state.setCurrentTopic("general");
         state.setFrustrationLevel(0);
         state.setSatisfactionScore(5);
+        state.setPendingAction(PendingAction.NONE); // ✅ Đảm bảo giá trị mặc định được thiết lập
         state.setLastStateChange(LocalDateTime.now());
         state.setStateHistory(new java.util.ArrayList<>());
         state.setNeedsClarification(false);

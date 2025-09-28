@@ -3,11 +3,12 @@ package com.example.demo.service.document;
 import com.example.demo.dto.chat.DocumentInfoDTO;
 import com.example.demo.model.auth.User;
 import com.example.demo.repository.chat.KnowledgeRepository;
-// ✅ THAY ĐỔI: Đảm bảo bạn đã tạo file SemanticDocumentSplitter.java trong package này hoặc package con
 import com.example.demo.service.document.splitter.SemanticDocumentSplitter; 
+// ✅ THÊM IMPORT
+import com.example.demo.service.chat.CacheInvalidationService; 
 
 import dev.langchain4j.data.document.Document;
-import dev.langchain4j.data.document.DocumentSplitter; // Import DocumentSplitter
+import dev.langchain4j.data.document.DocumentSplitter;
 import dev.langchain4j.data.segment.TextSegment;
 import dev.langchain4j.model.embedding.EmbeddingModel;
 import dev.langchain4j.store.embedding.EmbeddingStore;
@@ -33,6 +34,8 @@ public class DocumentIngestionService {
     private final EmbeddingStore<TextSegment> embeddingStore;
     private final FileProcessingService fileProcessingService;
     private final KnowledgeRepository knowledgeRepository;
+    // ✅ TIÊM SERVICE VÔ HIỆU HÓA CACHE
+    private final CacheInvalidationService cacheInvalidationService;
 
     public List<DocumentInfoDTO> listDocuments(User user) {
         return knowledgeRepository.listDocumentsForUser(user.getId());
@@ -40,8 +43,14 @@ public class DocumentIngestionService {
 
     public int deleteDocument(String fileName, User user) {
         log.info("Yêu cầu xóa file {} của user {}", fileName, user.getEmail());
+        
+        // 1. VÔ HIỆU HÓA CACHE TRƯỚC KHI XÓA DỮ LIỆU GỐC
+        cacheInvalidationService.invalidateCacheForDocument(fileName);
+
+        // 2. XÓA DỮ LIỆU GỐC TỪ VECTOR STORE
         int deletedCount = knowledgeRepository.deleteDocument(fileName, user.getId());
         log.info("Đã xóa {} mẩu tin (chunks) của file {}", deletedCount, fileName);
+        
         return deletedCount;
     }
 
@@ -71,12 +80,22 @@ public class DocumentIngestionService {
     
     private void ingestSingleDocument(MultipartFile multipartFile, User user) throws IOException {
         File tempFile = null;
+        String fileName = multipartFile.getOriginalFilename();
         try {
+            // ✅ BƯỚC 1: VÔ HIỆU HÓA CACHE CŨ
+            // Logic này xử lý cho trường hợp người dùng upload lại file cùng tên (cập nhật).
+            // Nó sẽ xóa tất cả các câu trả lời cũ trong cache liên quan đến file này.
+            log.info("Invalidating cache for document: {} before ingestion.", fileName);
+            cacheInvalidationService.invalidateCacheForDocument(fileName);
+
+            // Tùy chọn: Xóa các embedding cũ của file này khỏi vector store trước khi nạp mới
+            // knowledgeRepository.deleteDocument(fileName, user.getId());
+
+            // ✅ BƯỚC 2: NẠP DỮ LIỆU MỚI (Logic hiện tại của bạn)
             tempFile = fileProcessingService.convertMultiPartToFile(multipartFile);
             
             Document originalDocument = fileProcessingService.loadDocument(tempFile);
             String originalContent = originalDocument.text();
-            String fileName = multipartFile.getOriginalFilename();
 
             String newContent = String.format(
                 "Đây là nội dung trích từ file có tên: '%s'\n\n%s",
@@ -85,17 +104,14 @@ public class DocumentIngestionService {
             );
 
             Document document = Document.from(newContent, originalDocument.metadata());
-
             document.metadata().add("userId", user.getId().toString());
             document.metadata().add("docType", "knowledge");
             document.metadata().add("fileName", fileName);
 
-            // ✅ THAY ĐỔI: Sử dụng SemanticDocumentSplitter thay vì recursive splitter.
-            // Ngưỡng 0.8 là một giá trị khởi đầu tốt, bạn có thể tinh chỉnh sau.
             DocumentSplitter splitter = new SemanticDocumentSplitter(embeddingModel, 0.8);
 
             EmbeddingStoreIngestor ingestor = EmbeddingStoreIngestor.builder()
-                    .documentSplitter(splitter) // Sử dụng splitter mới
+                    .documentSplitter(splitter)
                     .embeddingModel(embeddingModel)
                     .embeddingStore(embeddingStore)
                     .build();
@@ -109,12 +125,11 @@ public class DocumentIngestionService {
     }
 
     public void ingestTemporaryFile(MultipartFile multipartFile, User user, Long sessionId, String tempFileId) throws IOException {
-        
+        // ... Logic này có thể giữ nguyên vì file tạm thời thường không cần vô hiệu hóa cache phức tạp
+        // vì chúng sẽ bị xóa theo session.
         File tempFile = null;
-        
         try {
         	tempFile = fileProcessingService.convertMultiPartToFile(multipartFile);
-            
             Document originalDocument = fileProcessingService.loadDocument(tempFile);
             String originalContent = originalDocument.text();
             String fileName = multipartFile.getOriginalFilename();
@@ -126,18 +141,16 @@ public class DocumentIngestionService {
             );
 
             Document document = Document.from(newContent, originalDocument.metadata());
-            
             document.metadata().add("userId", user.getId().toString());
             document.metadata().add("docType", "temp_file");
             document.metadata().add("fileName", fileName);
             document.metadata().add("sessionId", sessionId.toString());
             document.metadata().add("tempFileId", tempFileId);
 
-            // ✅ THAY ĐỔI: Áp dụng SemanticDocumentSplitter cho cả file tạm thời.
             DocumentSplitter splitter = new SemanticDocumentSplitter(embeddingModel, 0.8);
 
             EmbeddingStoreIngestor ingestor = EmbeddingStoreIngestor.builder()
-                    .documentSplitter(splitter) // Sử dụng splitter mới
+                    .documentSplitter(splitter)
                     .embeddingModel(embeddingModel)
                     .embeddingStore(embeddingStore)
                     .build();
@@ -152,11 +165,14 @@ public class DocumentIngestionService {
 
     public int deleteTemporaryFilesForSession(Long sessionId, User user) {
         log.info("Yêu cầu xóa các file tạm thời của session {} cho user {}", sessionId, user.getEmail());
+        
+        // Mặc dù không bắt buộc, nhưng để đảm bảo sạch sẽ, bạn cũng có thể
+        // vô hiệu hóa cache cho từng file tạm thời trước khi xóa.
+        // Tuy nhiên, việc này đòi hỏi bạn phải lấy danh sách tên file trước khi xóa.
+        // Cách đơn giản hơn là chấp nhận cache sẽ tự hết hạn (TTL).
+        
         int deletedCount = knowledgeRepository.deleteTemporaryDocumentsBySession(sessionId, user.getId());
         log.info("Đã xóa {} mẩu tin (chunks) của các file tạm thời trong session {}", deletedCount, sessionId);
         return deletedCount;
     }
-
-    // Bạn có thể xóa hàm helper này nếu FileProcessingService đã xử lý tốt việc này.
-    // private File convertMultiPartToFile(MultipartFile file) throws IOException { ... }
 }
