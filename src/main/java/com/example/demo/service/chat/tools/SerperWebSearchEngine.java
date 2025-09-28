@@ -1,38 +1,44 @@
-// src/main/java/com/example/demo/service/chat/tools/SerperWebSearchEngine.java
 package com.example.demo.service.chat.tools;
 
+import com.example.demo.service.CostTrackingService; // ✅ 1. IMPORT SERVICE
 import com.google.gson.Gson;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
-import dev.langchain4j.web.search.WebSearchEngine;
-import dev.langchain4j.web.search.WebSearchInformationResult;
-import dev.langchain4j.web.search.WebSearchOrganicResult;
-import dev.langchain4j.web.search.WebSearchRequest;
-import dev.langchain4j.web.search.WebSearchResults;
+import dev.langchain4j.web.search.*;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.RequestBody;
 import okhttp3.Response;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
+import lombok.extern.slf4j.Slf4j;
 
 import java.io.IOException;
+import java.math.BigDecimal; // ✅ 1. IMPORT BIGDECIMAL
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
+@Slf4j // Thêm logger để ghi lại thông tin
 @Component
 public class SerperWebSearchEngine implements WebSearchEngine {
 
     private final OkHttpClient client = new OkHttpClient();
     private final Gson gson = new Gson();
     private final String apiKey;
+    private final CostTrackingService costTrackingService; // ✅ 2. THÊM TRƯỜNG MỚI
 
-    public SerperWebSearchEngine(@Value("${serper.api.key}") String apiKey) {
+    // ✅ 4. THÊM HẰNG SỐ GIÁ
+    // LƯU Ý: Giá này chỉ là tham khảo. Hãy kiểm tra lại trên trang giá của Serper.
+    private static final BigDecimal COST_PER_QUERY = new BigDecimal("0.001"); // $1 cho 1000 lượt search
+
+    // ✅ 3. CẬP NHẬT CONSTRUCTOR
+    public SerperWebSearchEngine(@Value("${serper.api.key}") String apiKey, CostTrackingService costTrackingService) {
         this.apiKey = apiKey;
+        this.costTrackingService = costTrackingService;
     }
 
     @Override
@@ -52,8 +58,16 @@ public class SerperWebSearchEngine implements WebSearchEngine {
                     .build();
 
             try (Response response = client.newCall(request).execute()) {
+
+                // --- BẮT ĐẦU TÍCH HỢP THEO DÕI CHI PHÍ ---
+                // Ghi nhận chi phí ngay khi thực hiện lời gọi API, bất kể thành công hay thất bại,
+                // vì Serper vẫn có thể tính phí cho mỗi request.
+                costTrackingService.recordUsage("SERPER_SEARCH", "queries", 1L, COST_PER_QUERY);
+                log.info("Executed a Serper web search for query: '{}'. Estimated cost: ${}", query, COST_PER_QUERY);
+                // --- KẾT THÚC TÍCH HỢP ---
+                
                 if (!response.isSuccessful()) {
-                    System.err.println("Unexpected code " + response);
+                    log.error("Serper API call failed with code: {}", response.code());
                     return createEmptyResults();
                 }
 
@@ -63,7 +77,6 @@ public class SerperWebSearchEngine implements WebSearchEngine {
                 JsonArray organicResultsJson = jsonResponse.getAsJsonArray("organic");
                 List<WebSearchOrganicResult> organicResults = new ArrayList<>();
 
-                // ==================== FIX CUỐI CÙNG: SỬ DỤNG CONSTRUCTOR ĐÚNG ====================
                 if (organicResultsJson != null) {
                     for (JsonElement resultElement : organicResultsJson) {
                         JsonObject resultObject = resultElement.getAsJsonObject();
@@ -73,17 +86,14 @@ public class SerperWebSearchEngine implements WebSearchEngine {
                         String snippet = resultObject.has("snippet") ? resultObject.get("snippet").getAsString() : null;
 
                         try {
-                            // Cốt lõi: Chuyển đổi String link thành URI và gọi constructor
                             URI uri = new URI(link);
                             WebSearchOrganicResult organicResult = new WebSearchOrganicResult(title, uri, snippet, null);
                             organicResults.add(organicResult);
                         } catch (URISyntaxException e) {
-                            // Bỏ qua kết quả nếu URL không hợp lệ
-                            System.err.println("Skipping result due to invalid URI: " + link);
+                            log.warn("Skipping result due to invalid URI: {}", link);
                         }
                     }
                 }
-                // =================================================================================
 
                 long totalResults = 0;
                 if (jsonResponse.has("searchInformation")) {
@@ -97,7 +107,7 @@ public class SerperWebSearchEngine implements WebSearchEngine {
                 return new WebSearchResults(searchInformation, organicResults);
             }
         } catch (IOException e) {
-            e.printStackTrace();
+            log.error("IOException during Serper API call", e);
             return createEmptyResults();
         }
     }
