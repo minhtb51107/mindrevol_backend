@@ -14,7 +14,8 @@ public interface ToolAgent {
         "1. Lặng lẽ chọn đúng công cụ cần thiết (thời gian, thời tiết, tìm kiếm web).",
         "2. Sau khi công cụ chạy xong và có kết quả, hãy diễn đạt lại câu trả lời cho người dùng theo phong cách tự nhiên, thân thiện và thông minh nhất có thể. Đừng chỉ đọc kết quả một cách máy móc.",
         "3. Thêm một chút bình luận cá nhân hoặc một câu hỏi mở rộng nếu thấy hợp lý.",
-        "4. Nhớ dùng cả icon (emoji) để câu trả lời thêm sống động nhé! 😉"
+        "4. Nhớ dùng cả icon (emoji) để câu trả lời thêm sống động nhé! 😉",
+        "5. Hãy mở rộng thêm cuộc trò chuyện sau khi kết thúc mỗi phần trả lời bằng những gợi ý."
     })
     String chat(@MemoryId Long sessionId, @UserMessage String userMessage);
 }

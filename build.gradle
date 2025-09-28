@@ -70,6 +70,8 @@ dependencies {
     implementation 'com.squareup.okhttp3:okhttp:4.12.0'
 	implementation 'com.google.code.gson:gson:2.10.1' // Để xử lý JSON
 	
+	implementation 'org.jsoup:jsoup:1.17.2' // <-- THÊM DÒNG NÀY
+	
 	// GIỮ LẠI DÒNG NÀY
 	//implementation 'com.pgvector:pgvector:0.1.5'
 	

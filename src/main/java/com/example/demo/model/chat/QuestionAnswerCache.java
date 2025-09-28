@@ -47,6 +47,9 @@ public class QuestionAnswerCache {
 
     @Column(name = "last_accessed_at")
     private ZonedDateTime lastAccessedAt = ZonedDateTime.now();
+    
+    @Column(name = "valid_until")
+    private ZonedDateTime validUntil;
 
     public QuestionAnswerCache() {
     }

@@ -1,3 +1,15 @@
+# ===================================================================
+# CẤU HÌNH CHO TÍNH NĂNG CACHE THÔNG MINH
+# ===================================================================
+application:
+  cache:
+    # Ngưỡng tương đồng (similarity) để coi một câu hỏi là trùng khớp trong cache.
+    # Giá trị này phụ thuộc vào toán tử bạn dùng trong PGVector:
+    # - Nếu dùng L2 distance (<->), giá trị càng thấp càng tốt (ví dụ: 0.15)
+    # - Nếu dùng Cosine similarity (<=>), giá trị càng gần 1.0 càng tốt (ví dụ: 0.95)
+    # Bắt đầu với một giá trị an toàn.
+    similarity-threshold: 0.95
+
 # ==========================
 # Datasource & Hikari Config
 # ==========================
