@@ -47,6 +47,7 @@ pipelines:
     steps:
       - retrieval
       - reranking
+      - context-compression   # ✅ THÊM BƯỚC NÀY
       - generation
   simple-rag:
     steps:
@@ -70,3 +71,12 @@ weather:
 fmp:
   api:
     key: "d3c257pr01qu1259be90d3c257pr01qu1259be9g"
+
+# ==========================
+# LangChain Config
+# ==========================
+langchain:
+  retrieval:
+    reranker:
+      # Giảm từ 3 xuống 2 hoặc 1
+      top-n: 2

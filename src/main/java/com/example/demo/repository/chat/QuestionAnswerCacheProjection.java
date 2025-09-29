@@ -1,9 +1,12 @@
 package com.example.demo.repository.chat;
 
-import com.example.demo.model.chat.QuestionAnswerCache;
+import java.util.UUID;
 
-// Interface này cho phép Spring Data JPA tự động map kết quả từ native query
+// ✅ THAY ĐỔI Ở ĐÂY
+// Interface này giờ đây sẽ lấy trực tiếp các cột cần thiết từ kết quả truy vấn.
 public interface QuestionAnswerCacheProjection {
-    QuestionAnswerCache getQuestionAnswerCache();
+    // Tên phương thức phải khớp với tên cột (hoặc alias) trong native query
+    UUID getId();
+    String getAnswerText();
     double getDistance();
 }

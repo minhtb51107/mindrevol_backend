@@ -4,6 +4,7 @@ import com.example.demo.config.monitoring.LogExecutionTime;
 import com.example.demo.model.chat.ChatSession;
 import com.example.demo.service.chat.ChatMessageService;
 import com.example.demo.service.chat.guardrail.GuardrailManager;
+import com.example.demo.service.chat.integration.TrackedChatLanguageModel;
 import com.example.demo.service.chat.orchestration.context.RagContext;
 import com.example.demo.service.chat.orchestration.pipeline.PipelineStep;
 import com.example.demo.service.chat.orchestration.pipeline.result.GenerationStepResult;
@@ -65,11 +66,18 @@ public class GenerationStep implements PipelineStep {
     public GenerationStepResult execute(RagContext context) {
         List<ChatMessage> finalLcMessages = buildFinalLc4jMessages(context);
         
-        // Logic cho streaming hoặc blocking vẫn giữ nguyên, 
-        // nhưng kết quả cuối cùng sẽ được đóng gói vào GenerationStepResult.
-        
-        // Ví dụ với blocking generation:
-        Response<AiMessage> response = chatLanguageModel.generate(finalLcMessages);
+        // --- THAY ĐỔI Ở ĐÂY ---
+        // ✅ 2. Thêm callIdentifier vào lệnh gọi generate
+        // Cast model để gọi phương thức có callIdentifier
+        Response<AiMessage> response;
+        if (chatLanguageModel instanceof TrackedChatLanguageModel) {
+            response = ((TrackedChatLanguageModel) chatLanguageModel).generate(finalLcMessages, "generation_step");
+        } else {
+            log.warn("ChatLanguageModel is not tracked; cost for 'generation_step' will not be recorded.");
+            response = chatLanguageModel.generate(finalLcMessages);
+        }
+        // --- KẾT THÚC THAY ĐỔI ---
+
         String finalReply = response.content().text();
         String safeResponse = guardrailManager.checkOutput(finalReply);
         persistConversation(context, context.getInitialQuery(), safeResponse);
@@ -82,11 +90,21 @@ public class GenerationStep implements PipelineStep {
 
     private void executeBlockingGeneration(RagContext context, List<ChatMessage> messages) {
         log.debug("Executing GenerationStep in BLOCKING mode for session {}", context.getSession().getId());
-        Response<AiMessage> response = chatLanguageModel.generate(messages);
+        
+        // --- THAY ĐỔI Ở ĐÂY ---
+        // ✅ 3. Thêm callIdentifier vào lệnh gọi generate
+        Response<AiMessage> response;
+        if (chatLanguageModel instanceof TrackedChatLanguageModel) {
+             response = ((TrackedChatLanguageModel) chatLanguageModel).generate(messages, "generation_step_blocking");
+        } else {
+            log.warn("ChatLanguageModel is not tracked; cost for 'generation_step_blocking' will not be recorded.");
+            response = chatLanguageModel.generate(messages);
+        }
+        // --- KẾT THÚC THAY ĐỔI ---
+
         String finalReply = response.content().text();
         context.setReply(finalReply);
         
-        // Thực hiện kiểm tra và lưu trữ cho chế độ đồng bộ
         String safeResponse = guardrailManager.checkOutput(finalReply);
         persistConversation(context, context.getInitialQuery(), safeResponse);
     }
@@ -161,7 +179,9 @@ public class GenerationStep implements PipelineStep {
     
     private List<ChatMessage> buildFinalLc4jMessages(RagContext context) {
         Map<String, Object> userPrefs = userPreferenceService.getUserPreferencesForPrompt(context.getUser().getId());
-        String ragContextStr = context.getRagContextString() != null ? context.getRagContextString() : "";
+        String ragContextStr = context.getRagContextString() != null && !context.getRagContextString().isBlank()
+                ? context.getRagContextString()
+                : ""; // Không cần fallback về tài liệu gốc nữa vì mục tiêu là tiết kiệm token.
         String fileContext = extractFileContext(context);
 
         List<ChatMessage> messages = new ArrayList<>();

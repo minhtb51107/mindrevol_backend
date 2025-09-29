@@ -12,23 +12,25 @@ import java.util.UUID;
 
 public interface QuestionAnswerCacheRepository extends JpaRepository<QuestionAnswerCache, UUID> {
 
-    // ✅ THAY ĐỔI LỚN:
-    // 1. Thêm cột 'distance' vào SELECT.
-    // 2. Thay đổi kiểu trả về thành List<QuestionAnswerCacheProjection>.
-    // 3. Đổi tên phương thức để phản ánh việc nó trả về cả distance.
-    @Query(nativeQuery = true, value = """
-        SELECT 
-            id, question_text, answer_text, question_embedding, metadata, 
-            access_count, created_at, last_accessed_at, valid_until,
-            question_embedding <-> CAST(:embedding AS vector) AS distance
-        FROM question_answer_cache
-        WHERE (valid_until IS NULL OR valid_until > NOW())
-        ORDER BY distance
-        LIMIT :limit
-    """)
+    /**
+     * ✅ CẬP NHẬT QUERY Ở ĐÂY
+     * Sửa đổi câu query để chọn ra các cột cụ thể và đặt alias cho chúng
+     * khớp với tên trong QuestionAnswerCacheProjection.
+     */
+    @Query(nativeQuery = true, value =
+        "SELECT " +
+        "  id AS id, " + // Alias cho id
+        "  answer_text AS answerText, " + // Alias cho answer_text
+        "  question_embedding <=> CAST(:embedding AS vector) AS distance " +
+        "FROM " +
+        "  question_answer_cache " +
+        "ORDER BY " +
+        "  distance " +
+        "LIMIT :limit"
+    )
     List<QuestionAnswerCacheProjection> findNearestNeighborsWithDistance(
-            @Param("embedding") String embedding,
-            @Param("limit") int limit
+        @Param("embedding") String embedding,
+        @Param("limit") int limit
     );
     
     /**

@@ -26,6 +26,8 @@ public class TokenUsage {
     @JoinColumn(name = "user_id") // Tên cột trong database vẫn là user_id
     private User user;
     // --- KẾT THÚC SỬA ĐỔI ---
+    
+    private String callIdentifier; // <-- THÊM TRƯỜNG NÀY
 
     private Long sessionId;
 

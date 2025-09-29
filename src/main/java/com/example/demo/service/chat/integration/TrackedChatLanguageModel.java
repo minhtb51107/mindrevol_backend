@@ -5,7 +5,7 @@ import com.example.demo.model.monitoring.TokenUsage;
 import com.example.demo.repository.auth.UserRepository;
 import com.example.demo.repository.monitoring.TokenUsageRepository;
 import com.example.demo.util.UserUtils;
-import dev.langchain4j.agent.tool.ToolSpecification; // ✅ 1. THÊM IMPORT
+import dev.langchain4j.agent.tool.ToolSpecification;
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.model.chat.ChatLanguageModel;
@@ -35,40 +35,61 @@ public class TrackedChatLanguageModel implements ChatLanguageModel {
         this.userRepository = userRepository;
     }
 
+    // --- CÁC PHƯƠNG THỨC GỐC (ĐỂ TƯƠNG THÍCH NGƯỢC) ---
+
     @Override
     public Response<AiMessage> generate(List<ChatMessage> messages) {
-        Response<AiMessage> response = delegate.generate(messages);
-        trackUsage(response); // Tách logic tracking ra hàm riêng
-        return response;
+        // Gọi phương thức mới với callIdentifier mặc định
+        return generate(messages, "default_generation");
     }
 
-    // ✅ 2. THÊM PHƯƠNG THỨC MỚI ĐỂ XỬ LÝ TOOL
     @Override
     public Response<AiMessage> generate(List<ChatMessage> messages, List<ToolSpecification> toolSpecifications) {
-        Response<AiMessage> response = delegate.generate(messages, toolSpecifications);
-        trackUsage(response); // Dùng lại logic tracking
-        return response;
+        // Gọi phương thức mới với callIdentifier mặc định
+        return generate(messages, toolSpecifications, "default_tool_generation");
     }
 
-    // ✅ 2. THÊM PHƯƠNG THỨC MỚI ĐỂ XỬ LÝ TOOL
     @Override
     public Response<AiMessage> generate(List<ChatMessage> messages, ToolSpecification toolSpecification) {
-        Response<AiMessage> response = delegate.generate(messages, toolSpecification);
-        trackUsage(response); // Dùng lại logic tracking
+        // Gọi phương thức mới với callIdentifier mặc định
+        return generate(messages, toolSpecification, "default_tool_generation");
+    }
+
+
+    // --- CÁC PHƯƠNG THỨC MỚI VỚI CALL IDENTIFIER ---
+
+    public Response<AiMessage> generate(List<ChatMessage> messages, String callIdentifier) {
+        Response<AiMessage> response = delegate.generate(messages);
+        trackUsage(response, callIdentifier); // Truyền callIdentifier vào
         return response;
     }
 
-    // ✅ 3. TẠO HÀM HELPER ĐỂ TRÁNH LẶP CODE
-    private void trackUsage(Response<AiMessage> response) {
+    public Response<AiMessage> generate(List<ChatMessage> messages, List<ToolSpecification> toolSpecifications, String callIdentifier) {
+        Response<AiMessage> response = delegate.generate(messages, toolSpecifications);
+        trackUsage(response, callIdentifier); // Truyền callIdentifier vào
+        return response;
+    }
+
+    public Response<AiMessage> generate(List<ChatMessage> messages, ToolSpecification toolSpecification, String callIdentifier) {
+        Response<AiMessage> response = delegate.generate(messages, toolSpecification);
+        trackUsage(response, callIdentifier); // Truyền callIdentifier vào
+        return response;
+    }
+
+
+    // --- HELPER METHODS (ĐÃ CẬP NHẬT) ---
+
+    private void trackUsage(Response<AiMessage> response, String callIdentifier) {
         dev.langchain4j.model.output.TokenUsage usageInfo = response.tokenUsage();
         if (usageInfo != null) {
             BigDecimal cost = calculateCost(this.modelName, usageInfo.inputTokenCount(), usageInfo.outputTokenCount());
             User currentUser = UserUtils.getCurrentUser(userRepository);
-            saveTokenUsage(usageInfo, this.modelName, cost, currentUser);
+            // Truyền callIdentifier xuống hàm save
+            saveTokenUsage(usageInfo, this.modelName, cost, currentUser, callIdentifier);
         }
     }
 
-    protected void saveTokenUsage(dev.langchain4j.model.output.TokenUsage usageInfo, String modelName, BigDecimal cost, User user) {
+    protected void saveTokenUsage(dev.langchain4j.model.output.TokenUsage usageInfo, String modelName, BigDecimal cost, User user, String callIdentifier) {
         if (user == null) return;
         TokenUsage usageRecord = new TokenUsage();
         usageRecord.setModelName(modelName);
@@ -78,6 +99,7 @@ public class TrackedChatLanguageModel implements ChatLanguageModel {
         usageRecord.setCost(cost);
         usageRecord.setUser(user);
         usageRecord.setCreatedAt(LocalDateTime.now());
+        usageRecord.setCallIdentifier(callIdentifier); // ✅ LƯU CALL IDENTIFIER
         tokenUsageRepository.save(usageRecord);
     }
 
