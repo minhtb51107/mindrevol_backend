@@ -9,6 +9,7 @@ import dev.langchain4j.data.embedding.Embedding;
 import dev.langchain4j.data.segment.TextSegment;
 import dev.langchain4j.model.embedding.EmbeddingModel;
 import dev.langchain4j.model.output.Response;
+import lombok.extern.slf4j.Slf4j;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -19,6 +20,8 @@ import java.util.List;
  * Mục đích: chặn các lệnh gọi embedding, lấy thông tin token usage,
  * và ghi lại chi phí vào cơ sở dữ liệu.
  */
+
+@Slf4j
 public class TrackedEmbeddingModel implements EmbeddingModel {
 
     private final EmbeddingModel delegate;
@@ -66,6 +69,7 @@ public class TrackedEmbeddingModel implements EmbeddingModel {
         User currentUser = UserUtils.getCurrentUser(userRepository);
         if (currentUser == null) {
             // Không ghi log nếu không có người dùng (ví dụ: tác vụ chạy nền)
+        	log.warn("[COST_TRACKING] Không thể ghi nhận embedding token usage vì không tìm thấy người dùng (currentUser is null).");
             return;
         }
 

@@ -17,7 +17,7 @@ import dev.langchain4j.data.segment.TextSegment;
 import dev.langchain4j.memory.ChatMemory;
 import dev.langchain4j.model.StreamingResponseHandler;
 import dev.langchain4j.model.chat.ChatLanguageModel;
-import dev.langchain4j.model.chat.StreamingChatLanguageModel;
+//import dev.langchain4j.model.chat.StreamingChatLanguageModel;
 import dev.langchain4j.model.output.Response;
 import dev.langchain4j.store.embedding.EmbeddingMatch;
 import lombok.extern.slf4j.Slf4j;
@@ -38,19 +38,19 @@ import java.util.Map;
 public class GenerationStep implements PipelineStep {
 
     private final ChatLanguageModel chatLanguageModel;
-    private final StreamingChatLanguageModel streamingChatLanguageModel;
+    //private final StreamingChatLanguageModel streamingChatLanguageModel;
     private final UserPreferenceService userPreferenceService;
     private final GuardrailManager guardrailManager;
     private final ChatMessageService chatMessageService;
 
     // ✅ 2. Thêm @Qualifier để chỉ rõ bean "chatLanguageModel" cần được inject
     public GenerationStep(@Qualifier("chatLanguageModel") ChatLanguageModel chatLanguageModel,
-                          StreamingChatLanguageModel streamingChatLanguageModel,
+                          //StreamingChatLanguageModel streamingChatLanguageModel,
                           UserPreferenceService userPreferenceService,
                           @Lazy GuardrailManager guardrailManager,
                           ChatMessageService chatMessageService) {
         this.chatLanguageModel = chatLanguageModel;
-        this.streamingChatLanguageModel = streamingChatLanguageModel;
+        //this.streamingChatLanguageModel = streamingChatLanguageModel;
         this.userPreferenceService = userPreferenceService;
         this.guardrailManager = guardrailManager;
         this.chatMessageService = chatMessageService;
@@ -109,55 +109,55 @@ public class GenerationStep implements PipelineStep {
         persistConversation(context, context.getInitialQuery(), safeResponse);
     }
 
-    private void executeStreamingGeneration(RagContext context, List<ChatMessage> messages) {
-        log.debug("Executing GenerationStep in STREAMING mode for session {}", context.getSession().getId());
-        StringBuilder fullResponse = new StringBuilder();
-        SseEmitter emitter = context.getSseEmitter();
-
-        StreamingResponseHandler<AiMessage> handler = new StreamingResponseHandler<>() {
-            @Override
-            public void onNext(String token) {
-                try {
-                    emitter.send(SseEmitter.event().name("message").data(token));
-                    fullResponse.append(token);
-                } catch (IOException e) {
-                    log.warn("Failed to send token to client for session {}. Client might have disconnected.", context.getSession().getId());
-                    throw new UncheckedIOException(e);
-                }
-            }
-
-            @Override
-            public void onComplete(Response<AiMessage> response) {
-                String finalReply = fullResponse.toString();
-                log.info("Streaming completed for session {}. Final reply length: {}", context.getSession().getId(), finalReply.length());
-                context.setReply(finalReply);
-                
-                try {
-                    // --- LOGIC XỬ LÝ CUỐI CÙNG NẰM Ở ĐÂY ---
-                    String safeResponse = guardrailManager.checkOutput(finalReply);
-                    persistConversation(context, context.getInitialQuery(), safeResponse);
-                } catch (Exception e) {
-                    log.error("Error in onComplete handler for session {}: {}", context.getSession().getId(), e.getMessage(), e);
-                } finally {
-                    emitter.complete(); // Đóng emitter sau khi mọi thứ hoàn tất
-                }
-            }
-
-            @Override
-            public void onError(Throwable error) {
-                log.error("Error during streaming generation for session {}", context.getSession().getId(), error);
-                try {
-                    emitter.send(SseEmitter.event().name("error").data("Lỗi từ phía AI model."));
-                } catch (IOException e) {
-                    log.warn("Failed to send error event to client", e);
-                } finally {
-                    emitter.complete(); // Luôn đóng emitter khi có lỗi
-                }
-            }
-        };
-
-        streamingChatLanguageModel.generate(messages, handler);
-    }
+//    private void executeStreamingGeneration(RagContext context, List<ChatMessage> messages) {
+//        log.debug("Executing GenerationStep in STREAMING mode for session {}", context.getSession().getId());
+//        StringBuilder fullResponse = new StringBuilder();
+//        SseEmitter emitter = context.getSseEmitter();
+//
+//        StreamingResponseHandler<AiMessage> handler = new StreamingResponseHandler<>() {
+//            @Override
+//            public void onNext(String token) {
+//                try {
+//                    emitter.send(SseEmitter.event().name("message").data(token));
+//                    fullResponse.append(token);
+//                } catch (IOException e) {
+//                    log.warn("Failed to send token to client for session {}. Client might have disconnected.", context.getSession().getId());
+//                    throw new UncheckedIOException(e);
+//                }
+//            }
+//
+//            @Override
+//            public void onComplete(Response<AiMessage> response) {
+//                String finalReply = fullResponse.toString();
+//                log.info("Streaming completed for session {}. Final reply length: {}", context.getSession().getId(), finalReply.length());
+//                context.setReply(finalReply);
+//                
+//                try {
+//                    // --- LOGIC XỬ LÝ CUỐI CÙNG NẰM Ở ĐÂY ---
+//                    String safeResponse = guardrailManager.checkOutput(finalReply);
+//                    persistConversation(context, context.getInitialQuery(), safeResponse);
+//                } catch (Exception e) {
+//                    log.error("Error in onComplete handler for session {}: {}", context.getSession().getId(), e.getMessage(), e);
+//                } finally {
+//                    emitter.complete(); // Đóng emitter sau khi mọi thứ hoàn tất
+//                }
+//            }
+//
+//            @Override
+//            public void onError(Throwable error) {
+//                log.error("Error during streaming generation for session {}", context.getSession().getId(), error);
+//                try {
+//                    emitter.send(SseEmitter.event().name("error").data("Lỗi từ phía AI model."));
+//                } catch (IOException e) {
+//                    log.warn("Failed to send error event to client", e);
+//                } finally {
+//                    emitter.complete(); // Luôn đóng emitter khi có lỗi
+//                }
+//            }
+//        };
+//
+//        streamingChatLanguageModel.generate(messages, handler);
+//    }
     
     private void persistConversation(RagContext context, String userQuery, String aiReply) {
 //    	ChatSession session = context.getSession();

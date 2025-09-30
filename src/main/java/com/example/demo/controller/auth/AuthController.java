@@ -98,6 +98,11 @@ public class AuthController {
         if (userRepository.findByEmail(request.getEmail()).isPresent()) {
             return ResponseEntity.badRequest().body("Email đã tồn tại");
         }
+        
+        // ✅ BỔ SUNG: Kiểm tra username đã tồn tại chưa
+        if (userRepository.findByUsername(request.getEmail()).isPresent()) {
+            return ResponseEntity.badRequest().body("Username đã tồn tại");
+        }
 
         // Lấy mã xác minh mới nhất cho email từ database
         Optional<VerificationCode> codeOpt = verificationCodeRepository.findTopByEmailOrderByCreatedAtDesc(request.getEmail());
@@ -110,6 +115,7 @@ public class AuthController {
         // Tạo user mới và lưu vào database
         User user = new User();
         user.setEmail(request.getEmail());
+        user.setUsername(request.getEmail()); // ✅ LƯU USERNAME
         // Mã hóa mật khẩu trước khi lưu
         user.setPassword(passwordEncoder.encode(request.getPassword()));
         user.setFullName(request.getFullName());
@@ -141,77 +147,68 @@ public class AuthController {
     }
 
     // Endpoint đăng nhập bằng Google
- // Endpoint đăng nhập bằng Google
     @PostMapping("/login/google")
     public ResponseEntity<?> googleLogin(@RequestBody Map<String, String> request) {
         System.out.println("\n🔥 ===== /api/auth/login/google CALLED =====");
-        
-        // 🔍 LOG 1: Kiểm tra request body
-        System.out.println("📦 Full request body: " + request);
-        
-        // Lấy Google ID token từ request
         String idToken = request.get("idToken");
-        
-        // 🔍 LOG 2: Kiểm tra idToken từ client
-        System.out.println("📋 idToken from client: " + (idToken != null ? 
-            "PRESENT (length: " + idToken.length() + ")" : "NULL OR MISSING!"));
-        
-        if (idToken != null && idToken.length() > 100) {
-            System.out.println("🔍 idToken preview: " + idToken.substring(0, 50) + "..." + idToken.substring(idToken.length() - 20));
-        }
 
-        // Tạo Google ID token verifier với client ID của ứng dụng
+        if (idToken == null || idToken.isBlank()) {
+            return ResponseEntity.badRequest().body("Google ID token không được để trống");
+        }
+        
         GoogleIdTokenVerifier verifier = new GoogleIdTokenVerifier
             .Builder(new NetHttpTransport(), new JacksonFactory())
             .setAudience(Collections.singletonList("758520677856-j98pg9k2fju9545q0ffffmsnr9b1qtk9.apps.googleusercontent.com"))
             .build();
 
         try {
-            // 🔍 LOG 3: Trước khi verify với Google
             System.out.println("🔄 Verifying Google ID token...");
-            
-            // Xác minh Google ID token
             GoogleIdToken token = verifier.verify(idToken);
             
             if (token != null) {
                 System.out.println("✅ Google ID token verification SUCCESSFUL");
                 
-                // Lấy thông tin từ token
                 GoogleIdToken.Payload payload = token.getPayload();
                 String email = payload.getEmail();
                 String name = (String) payload.get("name");
 
-                // 🔍 LOG 4: Thông tin user từ Google
                 System.out.println("👤 User info from Google - Email: " + email + ", Name: " + name);
 
-                // Tìm user trong database hoặc tạo mới nếu chưa có
-                User user = userRepository.findByEmail(email).orElseGet(() -> {
-                    System.out.println("➡️ User not found, creating new user...");
-                    User newUser = new User();
-                    newUser.setEmail(email);
-                    newUser.setFullName(name);
-                    newUser.setPassword(""); // Không cần mật khẩu cho đăng nhập Google
-                    newUser.setRegisteredAt(LocalDateTime.now());
-                    User savedUser = userRepository.save(newUser);
-                    System.out.println("✅ New user created: " + savedUser.getEmail());
-                    return savedUser;
-                });
+                // --- 💡 LOGIC SỬA LỖI BẮT ĐẦU TỪ ĐÂY 💡 ---
 
-                System.out.println("✅ User resolved: " + user.getEmail());
-                
-                // 🔍 LOG 5: Trước khi tạo JWT
+                Optional<User> userOptional = userRepository.findByEmail(email);
+                User user;
+
+                if (userOptional.isPresent()) {
+                    // User đã tồn tại, kiểm tra xem đã có username chưa
+                    user = userOptional.get();
+                    System.out.println("➡️ User found: " + user.getEmail());
+                    if (user.getUsername() == null || user.getUsername().isBlank()) {
+                        System.out.println("⚠️ User has no username. Setting username to email.");
+                        user.setUsername(email); // Dùng email làm username
+                        // Không cần lưu ngay, JPA sẽ tự động cập nhật khi transaction kết thúc
+                    }
+                } else {
+                    // User chưa tồn tại, tạo mới
+                    System.out.println("➡️ User not found, creating new user...");
+                    user = new User();
+                    user.setEmail(email);
+                    user.setUsername(email); // ✅ QUAN TRỌNG: Gán username khi tạo mới
+                    user.setFullName(name);
+                    user.setPassword(passwordEncoder.encode("a-random-password-for-google-user-" + System.currentTimeMillis())); // Mật khẩu ngẫu nhiên
+                    user.setRegisteredAt(LocalDateTime.now());
+                }
+
+                User savedUser = userRepository.save(user);
+                System.out.println("✅ User saved/updated: " + savedUser.getEmail() + " with username: " + savedUser.getUsername());
+
+                // --- 💡 LOGIC SỬA LỖI KẾT THÚC TẠI ĐÂY 💡 ---
+
                 System.out.println("🛠️ Generating JWT token...");
+                String jwt = jwtUtil.generateToken(savedUser.getEmail());
                 
-                // Tạo JWT token cho user
-                String jwt = jwtUtil.generateToken(user.getEmail());
+                System.out.println("✅ JWT token generated.");
                 
-                // 🔍 LOG 6: Kiểm tra JWT token được tạo ra
-                System.out.println("✅ JWT token generated: '" + jwt + "'");
-                System.out.println("📏 JWT token length: " + jwt.length());
-                int dotCount = jwt.length() - jwt.replace(".", "").length();
-                System.out.println("🔢 Number of '.' in JWT: " + dotCount);
-                
-                // Trả về JSON object
                 Map<String, String> response = new HashMap<>();
                 response.put("token", jwt);
                 response.put("message", "Đăng nhập Google thành công");
@@ -221,12 +218,10 @@ public class AuthController {
                 return ResponseEntity.ok(response);
                 
             } else {
-                // Token không hợp lệ
                 System.err.println("❌ Google ID token verification FAILED: Token is null");
                 return ResponseEntity.status(401).body("Token không hợp lệ");
             }
         } catch (Exception e) {
-            // Xử lý lỗi xác minh token
             System.err.println("❌ EXCEPTION during Google token verification: " + e.getMessage());
             e.printStackTrace();
             return ResponseEntity.status(401).body("Lỗi xác minh Google ID token: " + e.getMessage());

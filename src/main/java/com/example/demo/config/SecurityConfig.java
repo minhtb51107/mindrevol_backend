@@ -43,14 +43,15 @@ public class SecurityConfig {
     private JwtAuthFilter jwtAuthFilter;
 
 
-    @Bean
-    public PasswordEncoder passwordEncoder() {
-        return new BCryptPasswordEncoder();
-    }
+//    @Bean
+//    public PasswordEncoder passwordEncoder() {
+//        return new BCryptPasswordEncoder();
+//    }
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
+        	.cors(Customizer.withDefaults()) // ✅ THÊM DÒNG NÀY VÀO ĐẦU TIÊN
             .csrf(csrf -> csrf.disable()) // Vô hiệu hóa CSRF (thường làm với API)
             .authorizeHttpRequests(auth -> auth
                 // 👇 Dòng này cho phép tất cả các request đến /api/auth/** mà không cần xác thực

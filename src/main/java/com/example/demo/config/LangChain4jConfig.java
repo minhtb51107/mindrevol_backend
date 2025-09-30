@@ -140,12 +140,12 @@ public class LangChain4jConfig {
 
 	// --- CÁC BEAN PHỤ TRỢ KHÁC ---
 
-	@Bean
-	public StreamingChatLanguageModel streamingChatLanguageModel(
-			@Value("${langchain4j.open-ai.chat-model.model-name}") String chatModelName) {
-		return OpenAiStreamingChatModel.builder().apiKey(openAiApiKey).modelName(chatModelName)
-				.temperature(0.7).timeout(Duration.ofSeconds(60)).build();
-	}
+//	@Bean
+//	public StreamingChatLanguageModel streamingChatLanguageModel(
+//			@Value("${langchain4j.open-ai.chat-model.model-name}") String chatModelName) {
+//		return OpenAiStreamingChatModel.builder().apiKey(openAiApiKey).modelName(chatModelName)
+//				.temperature(0.7).timeout(Duration.ofSeconds(60)).build();
+//	}
 
 	@Bean
 	public DocumentSplitter documentSplitter() {

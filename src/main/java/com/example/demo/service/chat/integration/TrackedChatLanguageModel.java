@@ -4,17 +4,20 @@ import com.example.demo.model.auth.User;
 import com.example.demo.model.monitoring.TokenUsage;
 import com.example.demo.repository.auth.UserRepository;
 import com.example.demo.repository.monitoring.TokenUsageRepository;
+import com.example.demo.service.chat.ChatAIService;
 import com.example.demo.util.UserUtils;
 import dev.langchain4j.agent.tool.ToolSpecification;
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.model.chat.ChatLanguageModel;
 import dev.langchain4j.model.output.Response;
+import lombok.extern.slf4j.Slf4j;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 
+@Slf4j
 public class TrackedChatLanguageModel implements ChatLanguageModel {
 
     protected final ChatLanguageModel delegate;
@@ -84,6 +87,11 @@ public class TrackedChatLanguageModel implements ChatLanguageModel {
         if (usageInfo != null) {
             BigDecimal cost = calculateCost(this.modelName, usageInfo.inputTokenCount(), usageInfo.outputTokenCount());
             User currentUser = UserUtils.getCurrentUser(userRepository);
+            if (currentUser == null) {
+                log.warn("[COST_TRACKING] Không thể ghi nhận token usage vì không tìm thấy người dùng (currentUser is null). Call Identifier: {}", callIdentifier);
+            } else {
+                log.info("[COST_TRACKING] Chuẩn bị ghi nhận token usage cho người dùng: {}", currentUser.getUsername());
+            }
             // Truyền callIdentifier xuống hàm save
             saveTokenUsage(usageInfo, this.modelName, cost, currentUser, callIdentifier);
         }
