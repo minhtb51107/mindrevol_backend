@@ -19,6 +19,12 @@ public enum QueryIntent {
     RAG_QUERY,
 
     /**
+     * ✅ THÊM DÒNG NÀY
+     * Câu hỏi về lịch sử hội thoại (tóm tắt, nhắc lại).
+     */
+    MEMORY_QUERY,
+
+    /**
      * Trò chuyện thông thường, không mang tính truy vấn thông tin.
      */
     CHIT_CHAT

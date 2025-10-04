@@ -2,8 +2,6 @@ package com.example.demo.service.chat.agent;
 
 import com.example.demo.service.chat.ChatMessageService;
 import com.example.demo.service.chat.QuestionAnswerCacheService;
-// Sửa 1: Xóa import không còn được sử dụng
-// import com.example.demo.service.chat.integration.RoutingTrackedChatLanguageModel; 
 import com.example.demo.service.chat.orchestration.context.RagContext;
 import com.example.demo.service.chat.orchestration.rules.FollowUpQueryDetectionService;
 import com.example.demo.service.chat.orchestration.rules.QueryIntent;
@@ -12,11 +10,11 @@ import com.example.demo.service.chat.orchestration.rules.QueryRewriteService;
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.UserMessage;
-import dev.langchain4j.model.chat.ChatLanguageModel; // Sửa 2: Import interface
+import dev.langchain4j.model.chat.ChatLanguageModel;
 import dev.langchain4j.model.output.Response;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Qualifier; // Sửa 3: Import @Qualifier
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 
 import java.time.ZonedDateTime;
@@ -29,7 +27,6 @@ import java.util.stream.Collectors;
 public class OrchestratorService {
 
     // --- CÁC DEPENDENCY ---
-    // Sửa 4: Thay đổi kiểu dữ liệu của trường thành interface
     private final ChatLanguageModel routingTrackedChatLanguageModel;
     private final ChatMessageService chatMessageService;
     private final QuestionAnswerCacheService cacheService;
@@ -41,7 +38,6 @@ public class OrchestratorService {
     private final QueryRewriteService queryRewriteService;
 
     @Autowired
-    // Sửa 5: Cập nhật constructor để inject đúng bean
     public OrchestratorService(List<Agent> agentList,
                                @Qualifier("routingModel") ChatLanguageModel routingTrackedChatLanguageModel,
                                ChatMessageService chatMessageService,
@@ -67,8 +63,6 @@ public class OrchestratorService {
         log.info("Orchestrator initialized with {} agents: {}", agents.size(), agents.keySet());
     }
 
-    // --- CÁC PHƯƠNG THỨC CÒN LẠI GIỮ NGUYÊN ---
-    // (Bao gồm orchestrate, chooseAgent, v.v... đã đúng logic)
     private boolean isUnhelpfulAnswer(String reply) {
         if (reply == null || reply.isBlank()) {
             return true;
@@ -80,81 +74,112 @@ public class OrchestratorService {
                lowerCaseReply.contains("tôi không thể giúp");
     }
 
- // ✅ PHƯƠNG THỨC ORCHESTRATE ĐÃ ĐƯỢC NÂNG CẤP HOÀN TOÀN
     public String orchestrate(String userMessage, RagContext context, boolean regenerate) {
-
-        // --- BƯỚC 1: XỬ LÝ VÀ LÀM GIÀU TRUY VẤN ---
+        // ✅ --- BƯỚC 1: XỬ LÝ VÀ LÀM GIÀU TRUY VẤN (ĐÃ TỐI ƯU HÓA) ---
         List<ChatMessage> chatHistory = context.getChatMemory().messages();
-        String rewrittenUserMessage = queryRewriteService.rewrite(chatHistory, userMessage);
+        
+        QueryIntent initialIntent = queryIntentClassificationService.classify(userMessage);
+        log.info("Initial classified intent (pre-rewrite): {} for session {}", initialIntent, context.getSession().getId());
+
+        String rewrittenUserMessage = userMessage;
+        if (initialIntent == QueryIntent.RAG_QUERY || followUpQueryDetectionService.isFollowUp(userMessage)) {
+            log.info("Intent may require context. Rewriting query for session {}.", context.getSession().getId());
+            rewrittenUserMessage = queryRewriteService.rewrite(chatHistory, userMessage);
+        }
         context.setQuery(rewrittenUserMessage);
 
-        QueryIntent intent = queryIntentClassificationService.classify(rewrittenUserMessage);
-        log.info("Classified intent as: {} for session {}", intent, context.getSession().getId());
+        QueryIntent finalIntent = (rewrittenUserMessage.equals(userMessage)) 
+                                    ? initialIntent 
+                                    : queryIntentClassificationService.classify(rewrittenUserMessage);
+        log.info("Final classified intent: {} for session {}", finalIntent, context.getSession().getId());
 
-        // --- BƯỚC 2: LOGIC ĐIỀU PHỐI THÔNG MINH ---
+        // ✅ --- BƯỚC 2: LOGIC ĐIỀU PHỐI THÔNG MINH DỰA TRÊN Ý ĐỊNH ---
         Agent chosenAgent;
         String finalAnswer;
 
-        // Ưu tiên 1: Nếu là câu hỏi động, đi thẳng đến ToolAgent
-        if (intent == QueryIntent.DYNAMIC_QUERY) {
-            log.info("Intent is DYNAMIC_QUERY, routing directly to ToolAgent.");
-            chosenAgent = agents.get("ToolAgent");
-            chosenAgent.execute(context);
-            finalAnswer = context.getReply();
-        } else {
-            // Ưu tiên 2: Kiểm tra cache cho các loại câu hỏi khác
-            if (!regenerate) {
-                String contextForLookup = determineContextForLookup(rewrittenUserMessage, getLastBotMessage(chatHistory));
-                Optional<String> cachedAnswer = cacheService.findCachedAnswer(rewrittenUserMessage, contextForLookup);
-                if (cachedAnswer.isPresent()) {
-                    log.info("Cache hit for session {}. Returning cached answer.", context.getSession().getId());
-                    String answerFromCache = cachedAnswer.get();
-                    saveConversationAndUpdateMemory(context, userMessage, answerFromCache);
-                    return answerFromCache;
-                }
-            }
-            log.info("Cache miss or regenerate request for session {}.", context.getSession().getId());
+        // Ưu tiên 1: Xử lý các câu hỏi không cần RAG trước
+        switch (finalIntent) {
+            case DYNAMIC_QUERY:
+                log.info("Intent is DYNAMIC_QUERY, routing directly to ToolAgent.");
+                chosenAgent = agents.get("ToolAgent");
+                chosenAgent.execute(context);
+                finalAnswer = context.getReply();
+                return handleCachingAndPersistence(userMessage, rewrittenUserMessage, finalAnswer, context, chosenAgent, finalIntent);
 
-            // Nếu không có trong cache, chọn agent phù hợp (RAG, ChitChat...)
-            chosenAgent = chooseAgent(rewrittenUserMessage, context);
-            chosenAgent.execute(context);
-            finalAnswer = context.getReply();
+            case CHIT_CHAT:
+                log.info("Intent is CHIT_CHAT, routing directly to ChitChatAgent.");
+                chosenAgent = agents.get("ChitChatAgent");
+                chosenAgent.execute(context);
+                finalAnswer = context.getReply();
+                return handleCachingAndPersistence(userMessage, rewrittenUserMessage, finalAnswer, context, chosenAgent, finalIntent);
+
+            case MEMORY_QUERY:
+                 log.info("Intent is MEMORY_QUERY, routing directly to MemoryQueryAgent.");
+                 chosenAgent = agents.get("MemoryQueryAgent");
+                 chosenAgent.execute(context);
+                 finalAnswer = context.getReply();
+                 return handleCachingAndPersistence(userMessage, rewrittenUserMessage, finalAnswer, context, chosenAgent, finalIntent);
         }
+        
+        // --- LUỒNG XỬ LÝ MẶC ĐỊNH CHO RAG_QUERY VÀ STATIC_QUERY ---
+        log.info("Intent is RAG_QUERY or STATIC_QUERY, proceeding with cache check and RAG pipeline.");
 
-        // --- BƯỚC 3: FALLBACK TỰ ĐỘNG TỪ RAG SANG TOOL ---
-        // Nếu agent ban đầu là RAG và trả lời không hữu ích, tự động thử lại bằng ToolAgent
+        if (!regenerate) {
+            String contextForLookup = determineContextForLookup(rewrittenUserMessage, getLastBotMessage(chatHistory));
+            Optional<String> cachedAnswer = cacheService.findCachedAnswer(rewrittenUserMessage, contextForLookup);
+            if (cachedAnswer.isPresent()) {
+                log.info("Cache hit for session {}. Returning cached answer.", context.getSession().getId());
+                String answerFromCache = cachedAnswer.get();
+                saveConversationAndUpdateMemory(context, userMessage, answerFromCache);
+                return answerFromCache;
+            }
+        }
+        log.info("Cache miss or regenerate request for session {}.", context.getSession().getId());
+
+        chosenAgent = chooseAgent(rewrittenUserMessage, context);
+        chosenAgent.execute(context);
+        finalAnswer = context.getReply();
+
+        // Fallback Logic
         if (isUnhelpfulAnswer(finalAnswer) && "RAGAgent".equals(chosenAgent.getName())) {
             log.warn("RAGAgent returned an unhelpful answer. Triggering AUTOMATIC fallback to ToolAgent.");
             Agent toolAgent = agents.get("ToolAgent");
             if (toolAgent != null) {
-                toolAgent.execute(context); // Thực thi lại với cùng context
+                toolAgent.execute(context);
                 String fallbackAnswer = context.getReply();
                 if (fallbackAnswer != null && !fallbackAnswer.isBlank() && !isUnhelpfulAnswer(fallbackAnswer)) {
-                    finalAnswer = fallbackAnswer; // Ghi đè câu trả lời
-                    chosenAgent = toolAgent; // Cập nhật lại agent đã cung cấp câu trả lời cuối cùng
+                    finalAnswer = fallbackAnswer;
+                    chosenAgent = toolAgent;
                     log.info("Fallback to ToolAgent successful. Using its answer.");
                 } else {
                     log.warn("Fallback ToolAgent also returned an unhelpful answer.");
                 }
             }
         }
+        
+        return handleCachingAndPersistence(userMessage, rewrittenUserMessage, finalAnswer, context, chosenAgent, finalIntent);
+    }
 
-        // --- BƯỚC 4: LƯU CACHE VỚI TTL ĐỘNG VÀ LƯU LỊCH SỬ ---
+    private String handleCachingAndPersistence(String originalUserMessage, String rewrittenUserMessage, String finalAnswer, RagContext context, Agent chosenAgent, QueryIntent intent) {
         if (finalAnswer != null && !finalAnswer.isEmpty() && !isUnhelpfulAnswer(finalAnswer)) {
             Map<String, Object> metadata = new HashMap<>();
             ZonedDateTime validUntil;
+            List<ChatMessage> chatHistory = context.getChatMemory().messages();
             String contextForLookup = determineContextForLookup(rewrittenUserMessage, getLastBotMessage(chatHistory));
 
-            // Logic TTL động: DYNAMIC_QUERY hoặc ToolAgent sẽ có TTL ngắn
             if (intent == QueryIntent.DYNAMIC_QUERY || "ToolAgent".equals(chosenAgent.getName())) {
                 metadata.put("source", "tool_api");
-                validUntil = ZonedDateTime.now().plusHours(1); // Cache thông tin động trong 1 giờ
+                validUntil = ZonedDateTime.now().plusHours(1);
                 log.info("Saving DYNAMIC answer from agent '{}' to cache with 1-hour TTL.", chosenAgent.getName());
             } else {
                 switch (intent) {
                     case CHIT_CHAT:
                         metadata.put("source", "llm_chit_chat");
                         validUntil = ZonedDateTime.now().plusMonths(1);
+                        break;
+                    case MEMORY_QUERY:
+                        metadata.put("source", "llm_memory");
+                         validUntil = ZonedDateTime.now().plusDays(1);
                         break;
                     case RAG_QUERY:
                     case STATIC_QUERY:
@@ -163,19 +188,19 @@ public class OrchestratorService {
                         validUntil = ZonedDateTime.now().plusYears(1);
                         break;
                 }
-                log.info("Saving STATIC answer from agent '{}' to cache.", chosenAgent.getName());
+                log.info("Saving answer from agent '{}' to cache.", chosenAgent.getName());
             }
             metadata.put("chosen_agent", chosenAgent.getName());
             cacheService.saveToCache(rewrittenUserMessage, finalAnswer, contextForLookup, metadata, validUntil);
-            
-            saveConversationAndUpdateMemory(context, userMessage, finalAnswer);
-        } else if (finalAnswer != null && !finalAnswer.isEmpty()) {
-             // Vẫn lưu cuộc trò chuyện dù câu trả lời không hữu ích
-            saveConversationAndUpdateMemory(context, userMessage, finalAnswer);
         }
+        
+        // Luôn lưu lịch sử hội thoại, dù câu trả lời có hữu ích hay không
+        saveConversationAndUpdateMemory(context, originalUserMessage, finalAnswer);
 
         return finalAnswer;
     }
+
+
     private String determineContextForLookup(String userMessage, String lastBotMessage) {
         if (lastBotMessage != null && !lastBotMessage.isBlank() && followUpQueryDetectionService.isFollowUp(userMessage)) {
             return lastBotMessage;
@@ -244,7 +269,7 @@ public class OrchestratorService {
             log.info("Orchestrator saved conversation to DB for session {}", context.getSession().getId());
             
             context.getChatMemory().add(UserMessage.from(userMessage));
-            context.getChatMemory().add(AiMessage.from(assistantResponse));
+            context.getChatMemory().add(AiMessage.from(assistantResponse == null ? "" : assistantResponse));
             log.info("Orchestrator updated short-term memory for session {}", context.getSession().getId());
         } catch (Exception e) {
             log.error("Error during centralized persistence in Orchestrator for session {}: {}", context.getSession().getId(), e.getMessage(), e);

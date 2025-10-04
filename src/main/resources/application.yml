@@ -1,5 +1,5 @@
 # ===================================================================
-# CẤU HÌNH CHO TÍNH NĂNG CACHE THÔNG MINH
+# CẤU HÌNH CHO TÍNH NĂNG CACHE THÔNG MINH + CHAT MEMORY
 # ===================================================================
 application:
   cache:
@@ -15,6 +15,10 @@ application:
     l1-cache-max-size: 1000     # Số lượng mục tối đa trong cache
     l1-cache-expire-minutes: 5  # Thời gian sống của cache (phút)
 
+  chat-memory:
+    max-messages: 20             # Tổng số tin nhắn giữ trong bộ nhớ hội thoại
+    summary-trigger-count: 15    # Khi đủ 15 tin nhắn thì trigger tóm tắt
+    messages-to-summarize: 10    # Số lượng tin nhắn đem đi tóm tắt mỗi lần
 # ==========================
 # Datasource & Hikari Config
 # ==========================
@@ -55,7 +59,7 @@ pipelines:
       - generation
 
 retrieval:
-  max-results: 50
+  max-results: 15 # <-- GIẢM TỪ 50 XUỐNG 15
 
 # ==========================
 # API Keys
@@ -78,5 +82,5 @@ fmp:
 langchain:
   retrieval:
     reranker:
-      # Giảm từ 3 xuống 2 hoặc 1
-      top-n: 2
+      # Tăng lên 3 để có lựa chọn tốt hơn sau khi rerank
+      top-n: 3 # <-- TĂNG TỪ 2 LÊN 3

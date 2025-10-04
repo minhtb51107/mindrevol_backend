@@ -2,8 +2,10 @@ package com.example.demo.config;
 
 import com.example.demo.repository.auth.UserRepository;
 import com.example.demo.repository.monitoring.TokenUsageRepository;
+import com.example.demo.service.chat.EmbeddingCacheService;
 import com.example.demo.service.chat.agent.FinancialAnalystAgent;
 import com.example.demo.service.chat.agent.ToolAgent;
+import com.example.demo.service.chat.integration.CachedEmbeddingModel;
 import com.example.demo.service.chat.integration.RoutingTrackedChatLanguageModel;
 import com.example.demo.service.chat.integration.TrackedChatLanguageModel;
 import com.example.demo.service.chat.integration.TrackedEmbeddingModel;
@@ -87,16 +89,23 @@ public class LangChain4jConfig {
 	}
 
 	@Bean
-	public EmbeddingModel embeddingModel(TokenUsageRepository tokenUsageRepository, UserRepository userRepository) {
-		OpenAiEmbeddingModelName modelEnum = OpenAiEmbeddingModelName.TEXT_EMBEDDING_ADA_002;
-		String modelName = modelEnum.toString();
-		
-		EmbeddingModel openAiEmbeddingModel = OpenAiEmbeddingModel.builder()
-				.apiKey(openAiApiKey)
-				.modelName(modelEnum) // Truyền thẳng Enum
-				.timeout(Duration.ofSeconds(30)).build();
-		return new TrackedEmbeddingModel(openAiEmbeddingModel, modelName, tokenUsageRepository, userRepository);
-	}
+    public EmbeddingModel embeddingModel(TokenUsageRepository tokenUsageRepository, 
+                                         UserRepository userRepository,
+                                         EmbeddingCacheService embeddingCacheService) { // <-- Thêm tham số
+        OpenAiEmbeddingModelName modelEnum = OpenAiEmbeddingModelName.TEXT_EMBEDDING_ADA_002;
+        String modelName = modelEnum.toString();
+
+        EmbeddingModel openAiEmbeddingModel = OpenAiEmbeddingModel.builder()
+                .apiKey(openAiApiKey)
+                .modelName(modelEnum)
+                .timeout(Duration.ofSeconds(30)).build();
+        
+        // Bọc model gốc với tracking
+        EmbeddingModel trackedModel = new TrackedEmbeddingModel(openAiEmbeddingModel, modelName, tokenUsageRepository, userRepository);
+
+        // Bọc tiếp model đã tracking với caching
+        return new CachedEmbeddingModel(trackedModel, embeddingCacheService);
+    }
 
 	// --- CẤU HÌNH CÁC AI SERVICE (Không thay đổi) ---
 	@Bean

@@ -10,6 +10,7 @@ import dev.langchain4j.memory.ChatMemory;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.ListOperations;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
@@ -31,29 +32,38 @@ public class LangChainChatMemoryService {
     private final ObjectMapper objectMapper;
     private final ConversationSummaryService conversationSummaryService;
 
+    @Value("${application.chat-memory.max-messages:20}")
+    private int maxMessages;
+
+    @Value("${application.chat-memory.summary-trigger-count:15}")
+    private int summaryTriggerCount;
+
+    @Value("${application.chat-memory.messages-to-summarize:10}")
+    private int messagesToSummarize;
+
+
     private static final String REDIS_MESSAGES_PREFIX = "lc4j_chat_messages:";
     private static final String REDIS_SUMMARY_PREFIX = "lc4j_chat_summary:";
-    private static final int MAX_MESSAGES = 20;
-    private static final int SUMMARY_TRIGGER_COUNT = 15;
-    private static final int MESSAGES_TO_SUMMARIZE = 10;
 
     private final Map<Long, ChatMemory> memoryCache = new ConcurrentHashMap<>();
 
     public ChatMemory getChatMemory(Long sessionId) {
         return memoryCache.computeIfAbsent(sessionId, id ->
-                // ✅ SỬA LỖI: Truyền redisTemplate và memoryCache vào constructor
                 new SummarizingRedisChatMemory(
                         id,
-                        this.redisTemplate, // Sửa ở đây
+                        this.redisTemplate,
                         this.objectMapper,
                         this.conversationSummaryService,
-                        this.memoryCache // Sửa ở đây
+                        this.memoryCache,
+                        maxMessages,
+                        summaryTriggerCount,
+                        messagesToSummarize
                 )
         );
     }
 
     /**
-     * LỚP INNER CLASS ĐÃ ĐƯỢC SỬA LỖI HOÀN CHỈNH
+     * LỚP INNER CLASS ĐÃ ĐƯỢC SỬA LỖI VÀ CẬP NHẬT
      */
     @RequiredArgsConstructor
     private static class SummarizingRedisChatMemory implements ChatMemory {
@@ -65,9 +75,12 @@ public class LangChainChatMemoryService {
         private final ValueOperations<String, String> valueOps;
         private final ObjectMapper objectMapper;
         private final ConversationSummaryService summaryService;
-        // ✅ SỬA LỖI: Thêm các trường để lớp inner có thể truy cập
         private final RedisTemplate<String, String> redisTemplate;
         private final Map<Long, ChatMemory> memoryCache;
+
+        private final int maxMessages;
+        private final int summaryTriggerCount;
+        private final int messagesToSummarize;
 
 
         public SummarizingRedisChatMemory(
@@ -75,18 +88,23 @@ public class LangChainChatMemoryService {
                 RedisTemplate<String, String> redisTemplate,
                 ObjectMapper objectMapper,
                 ConversationSummaryService summaryService,
-                Map<Long, ChatMemory> memoryCache // Thêm vào constructor
+                Map<Long, ChatMemory> memoryCache,
+                int maxMessages,
+                int summaryTriggerCount,
+                int messagesToSummarize
         ) {
             this.sessionId = sessionId;
             this.messagesKey = REDIS_MESSAGES_PREFIX + sessionId;
             this.summaryKey = REDIS_SUMMARY_PREFIX + sessionId;
-            // ✅ SỬA LỖI: Gán các đối tượng được truyền vào
             this.redisTemplate = redisTemplate;
             this.memoryCache = memoryCache;
             this.listOps = redisTemplate.opsForList();
             this.valueOps = redisTemplate.opsForValue();
             this.objectMapper = objectMapper;
             this.summaryService = summaryService;
+            this.maxMessages = maxMessages;
+            this.summaryTriggerCount = summaryTriggerCount;
+            this.messagesToSummarize = messagesToSummarize;
         }
 
         @Override
@@ -126,10 +144,10 @@ public class LangChainChatMemoryService {
             try {
                 String jsonMessage = serialize(message);
                 listOps.leftPush(messagesKey, jsonMessage);
-                listOps.trim(messagesKey, 0, MAX_MESSAGES - 1);
+                listOps.trim(messagesKey, 0, this.maxMessages - 1);
 
                 Long currentMessageCount = listOps.size(messagesKey);
-                if (currentMessageCount != null && currentMessageCount >= SUMMARY_TRIGGER_COUNT) {
+                if (currentMessageCount != null && currentMessageCount >= this.summaryTriggerCount) {
                     summarizeAndPrune();
                 }
             } catch (Exception e) {
@@ -140,40 +158,47 @@ public class LangChainChatMemoryService {
         private void summarizeAndPrune() {
             log.info("Kích hoạt tóm tắt cho session ID: {}", sessionId);
 
-            // ✅ SỬA LỖI: Lấy kích thước danh sách hiện tại một cách an toàn
             Long currentMessageCount = listOps.size(messagesKey);
-            if (currentMessageCount == null || currentMessageCount < MESSAGES_TO_SUMMARIZE) {
-                return; // Không đủ tin nhắn để tóm tắt
+            // Sử dụng this. để chỉ rõ là đang dùng field của class
+            if (currentMessageCount == null || currentMessageCount < this.messagesToSummarize) {
+                return;
             }
 
-            List<String> jsonMessagesToSummarize = listOps.range(messagesKey, -MESSAGES_TO_SUMMARIZE, -1);
+            // Sử dụng this. để chỉ rõ là đang dùng field của class
+            List<String> jsonMessagesToSummarize = listOps.range(messagesKey, (long) -this.messagesToSummarize, -1L);
             if (jsonMessagesToSummarize == null || jsonMessagesToSummarize.isEmpty()) {
                 return;
             }
 
-            List<ChatMessage> messagesToSummarize = jsonMessagesToSummarize.stream()
+            // ✅ SỬA LỖI 1: Đổi tên biến local để tránh che khuất (shadowing) field của class
+            List<ChatMessage> messagesForSummary = jsonMessagesToSummarize.stream()
                     .map(this::deserialize)
                     .collect(Collectors.toList());
-            Collections.reverse(messagesToSummarize);
+            Collections.reverse(messagesForSummary);
 
             String existingSummaryJson = valueOps.get(summaryKey);
             if (existingSummaryJson != null) {
-                messagesToSummarize.add(0, deserialize(existingSummaryJson));
+                messagesForSummary.add(0, deserialize(existingSummaryJson));
             }
 
-            String newSummaryContent = summaryService.generateSummary(messagesToSummarize);
+            String newSummaryContent = summaryService.generateSummary(messagesForSummary);
             SystemMessage newSummaryMessage = SystemMessage.from("Đây là tóm tắt cuộc trò chuyện trước đó: " + newSummaryContent);
 
             valueOps.set(summaryKey, serialize(newSummaryMessage));
 
-            // ✅ SỬA LỖI: Sử dụng currentMessageCount đã được xác định
-            listOps.trim(messagesKey, 0, currentMessageCount - MESSAGES_TO_SUMMARIZE - 1);
+            // ✅ SỬA LỖI 2: Ép kiểu tường minh và sử dụng `this.` để đảm bảo tính toán chính xác
+            long messagesToKeep = currentMessageCount.longValue() - this.messagesToSummarize;
+            if (messagesToKeep > 0) {
+                listOps.trim(messagesKey, 0, messagesToKeep - 1);
+            } else {
+                redisTemplate.delete(messagesKey);
+            }
+
             log.info("Hoàn thành tóm tắt và làm gọn bộ nhớ cho session ID: {}", sessionId);
         }
 
         @Override
         public void clear() {
-            // ✅ SỬA LỖI: Sử dụng redisTemplate và memoryCache đã được truyền vào
             redisTemplate.delete(messagesKey);
             redisTemplate.delete(summaryKey);
             memoryCache.remove(sessionId);
