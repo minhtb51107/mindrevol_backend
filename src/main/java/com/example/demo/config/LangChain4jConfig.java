@@ -4,7 +4,9 @@ import com.example.demo.repository.auth.UserRepository;
 import com.example.demo.repository.monitoring.TokenUsageRepository;
 import com.example.demo.service.chat.EmbeddingCacheService;
 import com.example.demo.service.chat.agent.FinancialAnalystAgent;
-import com.example.demo.service.chat.agent.ToolAgent;
+import com.example.demo.service.chat.agent.RouterAgent;
+//import com.example.demo.service.chat.agent.ToolAgent;
+import com.example.demo.service.chat.agent.tools.AgentTools;
 import com.example.demo.service.chat.integration.CachedEmbeddingModel;
 import com.example.demo.service.chat.integration.RoutingTrackedChatLanguageModel;
 import com.example.demo.service.chat.integration.TrackedChatLanguageModel;
@@ -45,6 +47,18 @@ public class LangChain4jConfig {
 	private String openAiApiKey;
 
 	// --- CẤU HÌNH CÁC MODEL CHÍNH ---
+	
+	// ✅ BẠN HÃY THÊM BEAN MỚI NÀY VÀO ĐÂY
+    @Bean
+    public RouterAgent routerAgent(@Qualifier("chatLanguageModel") ChatLanguageModel chatLanguageModel,
+                                   AgentTools agentTools,
+                                   ChatMemoryProvider chatMemoryProvider) {
+        return AiServices.builder(RouterAgent.class)
+                .chatLanguageModel(chatLanguageModel) // Sử dụng model chính, mạnh nhất
+                .tools(agentTools)
+                .chatMemoryProvider(chatMemoryProvider)
+                .build();
+    }
 
 	@Bean
 	@Primary
@@ -61,18 +75,18 @@ public class LangChain4jConfig {
 		return new TrackedChatLanguageModel(openAiModel, modelName, tokenUsageRepository, userRepository);
 	}
 
-	@Bean
-	@Qualifier("routingModel")
-	public ChatLanguageModel routingModel(TokenUsageRepository tokenUsageRepository, UserRepository userRepository) {
-		OpenAiChatModelName modelEnum = OpenAiChatModelName.GPT_3_5_TURBO;
-		String modelName = modelEnum.toString();
-
-		ChatLanguageModel openAiModel = OpenAiChatModel.builder()
-				.apiKey(openAiApiKey)
-				.modelName(modelEnum) // Truyền thẳng Enum
-				.temperature(0.0).timeout(Duration.ofSeconds(20)).build();
-		return new RoutingTrackedChatLanguageModel(openAiModel, modelName, tokenUsageRepository, userRepository);
-	}
+//	@Bean
+//	@Qualifier("routingModel")
+//	public ChatLanguageModel routingModel(TokenUsageRepository tokenUsageRepository, UserRepository userRepository) {
+//		OpenAiChatModelName modelEnum = OpenAiChatModelName.GPT_3_5_TURBO;
+//		String modelName = modelEnum.toString();
+//
+//		ChatLanguageModel openAiModel = OpenAiChatModel.builder()
+//				.apiKey(openAiApiKey)
+//				.modelName(modelEnum) // Truyền thẳng Enum
+//				.temperature(0.0).timeout(Duration.ofSeconds(20)).build();
+//		return new RoutingTrackedChatLanguageModel(openAiModel, modelName, tokenUsageRepository, userRepository);
+//	}
 
 	@Bean
 	@Qualifier("classificationModel")
@@ -108,10 +122,10 @@ public class LangChain4jConfig {
     }
 
 	// --- CẤU HÌNH CÁC AI SERVICE (Không thay đổi) ---
-	@Bean
-	public QueryRouterService queryRouterService(@Qualifier("routingModel") ChatLanguageModel model) {
-		return AiServices.create(QueryRouterService.class, model);
-	}
+//	@Bean
+//	public QueryRouterService queryRouterService(@Qualifier("routingModel") ChatLanguageModel model) {
+//		return AiServices.create(QueryRouterService.class, model);
+//	}
 
 	@Bean
 	public QueryIntentClassificationService queryIntentClassificationService(@Qualifier("classificationModel") ChatLanguageModel model) {
@@ -133,19 +147,19 @@ public class LangChain4jConfig {
 		return AiServices.create(FinancialAnalystAgent.class, chatLanguageModel);
 	}
 	
-	@Bean
-	public ToolAgent toolAgent(ChatLanguageModel chatLanguageModel,
-	                           ChatMemoryProvider chatMemoryProvider, // Thêm tham số này
-	                           SerperWebSearchEngine serperWebSearchEngine,
-	                           TimeTool timeTool,
-	                           WeatherTool weatherTool,
-	                           StockTool stockTool) {
-	    return AiServices.builder(ToolAgent.class)
-	            .chatLanguageModel(chatLanguageModel)
-	            .chatMemoryProvider(chatMemoryProvider) // Cung cấp memory provider
-	            .tools(serperWebSearchEngine, timeTool, weatherTool, stockTool)
-	            .build();
-	}
+//	@Bean
+//	public ToolAgent toolAgent(ChatLanguageModel chatLanguageModel,
+//	                           ChatMemoryProvider chatMemoryProvider, // Thêm tham số này
+//	                           SerperWebSearchEngine serperWebSearchEngine,
+//	                           TimeTool timeTool,
+//	                           WeatherTool weatherTool,
+//	                           StockTool stockTool) {
+//	    return AiServices.builder(ToolAgent.class)
+//	            .chatLanguageModel(chatLanguageModel)
+//	            .chatMemoryProvider(chatMemoryProvider) // Cung cấp memory provider
+//	            .tools(serperWebSearchEngine, timeTool, weatherTool, stockTool)
+//	            .build();
+//	}
 
 	// --- CÁC BEAN PHỤ TRỢ KHÁC ---
 

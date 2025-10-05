@@ -4,7 +4,7 @@
 application:
   cache:
     # ✅ Ngưỡng tương đồng cho các loại similarity/distance
-    l2-distance-threshold: 0.2
+    l2-distance-threshold: 0.1
     similarity-threshold: 0.95
 
     # ✅ L2 Redis Cache
