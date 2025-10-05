@@ -2,8 +2,14 @@ package com.example.demo.service.chat.agent;
 
 import com.example.demo.service.chat.ChatMessageService;
 import com.example.demo.service.chat.QuestionAnswerCacheService;
+import com.example.demo.service.chat.agent.tools.ChitChatService;
+import com.example.demo.service.chat.agent.tools.MemoryQueryService;
+import com.example.demo.service.chat.agent.tools.RAGService;
+import com.example.demo.service.chat.guardrail.GuardrailManager;
 import com.example.demo.service.chat.orchestration.context.RagContext;
 import com.example.demo.service.chat.orchestration.rules.FollowUpQueryDetectionService;
+import com.example.demo.service.chat.orchestration.rules.QueryIntent;
+import com.example.demo.service.chat.orchestration.rules.QueryIntentClassificationService;
 import com.example.demo.service.chat.orchestration.rules.QueryRewriteService;
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessage;
@@ -26,50 +32,121 @@ public class OrchestratorService {
     private final QuestionAnswerCacheService cacheService;
     private final FollowUpQueryDetectionService followUpQueryDetectionService;
     private final QueryRewriteService queryRewriteService;
-    private final RouterAgent routerAgent; // ✅ Chỉ cần duy nhất RouterAgent để điều phối
+    
+    // ✅ SỬ DỤNG LẠI KIẾN TRÚC PHÂN TẦNG ĐÚNG ĐẮN
+    private final QueryIntentClassificationService intentClassifier; // Bộ phân loại rẻ tiền
+    private final RouterAgent routerAgent; // Bộ điều phối đắt tiền
+    private final RAGService ragService;
+    private final ChitChatService chitChatService;
+    private final MemoryQueryService memoryQueryService;
+    private final GuardrailManager guardrailManager; // <-- THÊM FIELD NÀY
 
     @Autowired
     public OrchestratorService(ChatMessageService chatMessageService,
                                QuestionAnswerCacheService cacheService,
                                FollowUpQueryDetectionService followUpQueryDetectionService,
                                QueryRewriteService queryRewriteService,
-                               RouterAgent routerAgent) {
+                               QueryIntentClassificationService intentClassifier,
+                               RouterAgent routerAgent,
+                               RAGService ragService,
+                               ChitChatService chitChatService,
+                               MemoryQueryService memoryQueryService,
+                               GuardrailManager guardrailManager // <-- INJECT VÀO ĐÂY
+                               ) {
         this.chatMessageService = chatMessageService;
         this.cacheService = cacheService;
         this.followUpQueryDetectionService = followUpQueryDetectionService;
         this.queryRewriteService = queryRewriteService;
+        this.intentClassifier = intentClassifier;
         this.routerAgent = routerAgent;
-        log.info("Orchestrator initialized with a simplified, powerful RouterAgent architecture.");
+        this.ragService = ragService;
+        this.chitChatService = chitChatService;
+        this.memoryQueryService = memoryQueryService;
+        this.guardrailManager = guardrailManager; // <-- GÁN GIÁ TRỊ
+        log.info("Orchestrator initialized with cost-optimized Tiered Routing architecture.");
     }
 
-    public String orchestrate(String userMessage, RagContext context, boolean regenerate) {
-        Long sessionId = context.getSession().getId();
-        List<ChatMessage> chatHistory = context.getChatMemory().messages();
-        String rewrittenUserMessage = userMessage;
+ // ... bên trong class OrchestratorService
 
-        if (followUpQueryDetectionService.isFollowUp(userMessage)) {
-            rewrittenUserMessage = queryRewriteService.rewrite(chatHistory, userMessage);
+    public String orchestrate(String userMessage, RagContext context, boolean regenerate) {
+        // ✅ BƯỚC 1: KIỂM DUYỆT ĐẦU VÀO
+        String sanitizedUserMessage = guardrailManager.checkInput(userMessage);
+        if (!sanitizedUserMessage.equals(userMessage)) {
+            saveConversationAndUpdateMemory(context, userMessage, sanitizedUserMessage);
+            return sanitizedUserMessage;
         }
-        
+
+        // --- LOGIC HIỆN TẠI CỦA BẠN (giữ nguyên và sửa lỗi) ---
+        List<ChatMessage> chatHistory = context.getChatMemory().messages();
+        String rewrittenUserMessage = sanitizedUserMessage;
+
+        if (followUpQueryDetectionService.isFollowUp(rewrittenUserMessage)) {
+            rewrittenUserMessage = queryRewriteService.rewrite(chatHistory, rewrittenUserMessage);
+        }
+        context.setQuery(rewrittenUserMessage);
+
         if (!regenerate) {
-            Optional<String> cachedAnswer = cacheService.findCachedAnswer(rewrittenUserMessage, null);
+            // ✅ ĐÃ PHỤC HỒI: Khai báo và gán giá trị cho contextForLookup
+            // Biến này được dùng để làm cho key của cache chính xác hơn, đặc biệt với các câu hỏi nối tiếp.
+            String contextForLookup = determineContextForLookup(rewrittenUserMessage, getLastBotMessage(chatHistory));
+            
+            Optional<String> cachedAnswer = cacheService.findCachedAnswer(rewrittenUserMessage, contextForLookup);
             if (cachedAnswer.isPresent()) {
-                log.info("Cache hit for session {}. Returning cached answer.", sessionId);
+                log.info("Cache hit for session {}. Returning cached answer.", context.getSession().getId());
                 String answerFromCache = cachedAnswer.get();
-                saveConversationAndUpdateMemory(context, userMessage, answerFromCache);
-                return answerFromCache;
+                
+                // KIỂM DUYỆT ĐẦU RA TỪ CACHE
+                String sanitizedAnswer = guardrailManager.checkOutput(answerFromCache);
+                saveConversationAndUpdateMemory(context, userMessage, sanitizedAnswer);
+                return sanitizedAnswer;
             }
         }
-        log.info("Cache miss for session {}. Invoking RouterAgent.", sessionId);
-        
-        // ✅ GIAO TOÀN BỘ QUYỀN QUYẾT ĐỊNH CHO ROUTERAGENT (GPT-4)
-        String finalAnswer = routerAgent.chat(sessionId, rewrittenUserMessage);
+        log.info("Cache miss or regenerate request for session {}.", context.getSession().getId());
 
-        // Lưu trữ kết quả
-        if (finalAnswer != null && !finalAnswer.isEmpty()) {
-            cacheService.saveToCache(rewrittenUserMessage, finalAnswer, null, new HashMap<>(), ZonedDateTime.now().plusDays(1));
+        QueryIntent intent = intentClassifier.classify(rewrittenUserMessage);
+        log.info("Classified intent for session {}: {}", context.getSession().getId(), intent);
+
+        String agentResponse;
+        String chosenAgentName = "unknown";
+
+        switch (intent) {
+            case CHIT_CHAT:
+                chosenAgentName = "ChitChatService";
+                agentResponse = chitChatService.chitChat(rewrittenUserMessage, context.getSession().getId());
+                break;
+            case RAG_QUERY:
+            case STATIC_QUERY:
+                chosenAgentName = "RAGService";
+                agentResponse = ragService.answerFromDocuments(rewrittenUserMessage, context.getSession().getId());
+                break;
+            case MEMORY_QUERY:
+                chosenAgentName = "MemoryQueryService";
+                agentResponse = memoryQueryService.answerFromHistory(rewrittenUserMessage, context.getSession().getId());
+                break;
+            case DYNAMIC_QUERY:
+            default:
+                chosenAgentName = "RouterAgent";
+                log.info("Intent requires dynamic tools, invoking RouterAgent for session {}.", context.getSession().getId());
+                agentResponse = routerAgent.chat(context.getSession().getId(), rewrittenUserMessage);
+                break;
         }
-        saveConversationAndUpdateMemory(context, userMessage, finalAnswer);
+        
+        // ✅ BƯỚC 2: KIỂM DUYỆT ĐẦU RA
+        String finalSanitizedAnswer = guardrailManager.checkOutput(agentResponse);
+
+        return handleCachingAndPersistence(userMessage, rewrittenUserMessage, finalSanitizedAnswer, context, chosenAgentName);
+    }
+
+    private String handleCachingAndPersistence(String originalUserMessage, String rewrittenUserMessage, String finalAnswer, RagContext context, String chosenAgentName) {
+        if (finalAnswer != null && !finalAnswer.isEmpty()) {
+            Map<String, Object> metadata = new HashMap<>();
+            metadata.put("source", "orchestrator");
+            metadata.put("chosen_agent", chosenAgentName);
+            ZonedDateTime validUntil = ZonedDateTime.now().plusDays(1);
+            String contextForLookup = determineContextForLookup(rewrittenUserMessage, getLastBotMessage(context.getChatMemory().messages()));
+            cacheService.saveToCache(rewrittenUserMessage, finalAnswer, contextForLookup, metadata, validUntil);
+        }
+        saveConversationAndUpdateMemory(context, originalUserMessage, finalAnswer);
         return finalAnswer;
     }
 
@@ -96,10 +173,8 @@ public class OrchestratorService {
         try {
             chatMessageService.saveMessage(context.getSession(), "user", userMessage);
             chatMessageService.saveMessage(context.getSession(), "assistant", assistantResponse);
-            
             context.getChatMemory().add(UserMessage.from(userMessage));
             context.getChatMemory().add(AiMessage.from(assistantResponse == null ? "" : assistantResponse));
-            log.info("Orchestrator saved conversation and updated memory for session {}", context.getSession().getId());
         } catch (Exception e) {
             log.error("Error during persistence in Orchestrator for session {}: {}", context.getSession().getId(), e.getMessage(), e);
         }

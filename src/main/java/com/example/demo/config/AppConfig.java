@@ -17,6 +17,12 @@ import com.example.demo.security.MyUserDetailsService;
 import com.fasterxml.jackson.databind.SerializationFeature;   // Import
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;     // Import
 
+import okhttp3.OkHttpClient;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+
+import java.time.Duration;
+
 import lombok.RequiredArgsConstructor;
 
 @Configuration
@@ -61,5 +67,14 @@ public class AppConfig {
             // Cấu hình định dạng ngày tháng
             builder.featuresToDisable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
         };
+    }
+    
+    @Bean
+    public OkHttpClient okHttpClient() {
+        return new OkHttpClient.Builder()
+                .connectTimeout(Duration.ofSeconds(20)) // Tăng thời gian chờ kết nối
+                .readTimeout(Duration.ofSeconds(60))    // Tăng thời gian chờ đọc response cho các file audio
+                .writeTimeout(Duration.ofSeconds(20))
+                .build();
     }
 }

@@ -4,6 +4,7 @@ import java.nio.file.AccessDeniedException;
 import java.util.Collections;
 import java.util.List;
 
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 
 import com.example.demo.model.auth.User;
@@ -19,13 +20,22 @@ import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 @Service
-@RequiredArgsConstructor
+//@RequiredArgsConstructor
 public class TitleGeneratorService {
     private final ChatSessionRepository sessionRepo;
     private final ChatMessageRepository messageRepo;
     // private final OpenAIService openAIService; // 🔥 ĐÃ XÓA
     
     private final ChatLanguageModel chatLanguageModel; // ✅ THAY THẾ (Bean này đã có từ LangChain4jConfig)
+    
+ // ✅ 3. TẠO CONSTRUCTOR THỦ CÔNG ĐỂ SỬ DỤNG @QUALIFIER
+    public TitleGeneratorService(ChatSessionRepository sessionRepo, 
+                                 ChatMessageRepository messageRepo, 
+                                 @Qualifier("titleGenerationModel") ChatLanguageModel chatLanguageModel) {
+        this.sessionRepo = sessionRepo;
+        this.messageRepo = messageRepo;
+        this.chatLanguageModel = chatLanguageModel;
+    }
 
     public String generateAITitle(Long sessionId, User user) throws AccessDeniedException {
         ChatSession session = sessionRepo.findById(sessionId)

@@ -56,7 +56,9 @@ public class ChatSessionService {
     }
 
     public List<ChatSession> getSessionsForUser(User user) {
-        return chatSessionRepo.findByUser(user);
+        // ✅ THAY ĐỔI TỪ chatSessionRepo.findByUser
+        // SANG PHƯƠNG THỨC MỚI ĐỂ LẤY DANH SÁCH ĐÃ SẮP XẾP
+        return chatSessionRepo.findByUserOrderByUpdatedAtDesc(user);
     }
 
  // Trong ChatSessionService.java

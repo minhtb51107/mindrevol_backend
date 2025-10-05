@@ -39,122 +39,87 @@ configurations {
 }
 
 repositories {
-   	mavenCentral()
+    mavenCentral()
     maven { url "https://repo.spring.io/milestone" }
+    maven { url "https://repo.spring.io/snapshot" }
 }
 
 dependencies {
-    // Spring Boot cơ bản
+    // 🌱 Spring Boot cơ bản
     implementation 'org.springframework.boot:spring-boot-starter-web'
     implementation 'org.springframework.boot:spring-boot-starter-thymeleaf'
     implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
     implementation 'org.springframework.boot:spring-boot-starter-validation'
     implementation 'org.springframework.boot:spring-boot-starter-security'
-    //implementation 'org.springframework.boot:spring-boot-starter-mail'
-    implementation 'com.google.guava:guava:32.1.3-jre' // hoặc bản mới hơn
+    implementation 'org.springframework.boot:spring-boot-starter-cache'
+    implementation 'org.springframework.boot:spring-boot-starter-actuator'
+
+    // Caching
+    implementation "com.github.ben-manes.caffeine:caffeine:3.2.2"
+
+    // Database
+    implementation 'org.postgresql:postgresql:42.7.3'
+    implementation 'org.flywaydb:flyway-core'
+    implementation 'org.flywaydb:flyway-database-postgresql'
+    implementation 'com.pgvector:pgvector:0.1.5'
+
+    // JSON, HTTP, tiện ích
+    implementation 'com.google.guava:guava:32.1.3-jre'
     implementation 'io.opencensus:opencensus-api:0.31.1'
     implementation 'org.json:json:20240303'
     implementation 'io.grpc:grpc-context:1.59.0'
-    
-    // THÊM DÒNG NÀY ĐỂ SỬ DỤNG AiServices và @Routing
-    implementation 'dev.langchain4j:langchain4j:0.35.0'
-    
-	// THÊM CÁC DÒNG NÀY VÀO LẠI
-	implementation 'dev.langchain4j:langchain4j-spring-boot-starter:0.35.0'
-	implementation "dev.langchain4j:langchain4j-open-ai:0.35.0"
-	implementation "dev.langchain4j:langchain4j-pgvector:0.35.0"
-	implementation "dev.langchain4j:langchain4j-document-parser-apache-tika:0.35.0"
-    
-    implementation 'org.apache.tika:tika-parsers-standard-package:2.9.2' 
-    implementation 'dev.langchain4j:langchain4j-document-parser-apache-tika:0.35.0'
-    
-    implementation 'org.springframework.retry:spring-retry'
-    
     implementation 'com.squareup.okhttp3:okhttp:4.12.0'
-	implementation 'com.google.code.gson:gson:2.10.1' // Để xử lý JSON
-	
-	implementation 'org.jsoup:jsoup:1.17.2' // <-- THÊM DÒNG NÀY
-	
-	// GIỮ LẠI DÒNG NÀY
-	//implementation 'com.pgvector:pgvector:0.1.5'
-	
-	// https://mvnrepository.com/artifact/io.hypersistence/hypersistence-utils-hibernate-63
-	//implementation("io.hypersistence:hypersistence-utils-hibernate-63:3.11.0")
+    implementation 'com.google.code.gson:gson:2.10.1'
+    implementation 'org.jsoup:jsoup:1.17.2'
 
-	//implementation 'io.hypersistence:hypersistence-utils-hibernate-63:3.7.0'
-    
-    //implementation platform("org.springframework.ai:spring-ai-bom:1.1.0-M1")
-	//implementation "org.springframework.ai:spring-ai-starter-model-openai"
-	//implementation "org.springframework.ai:spring-ai-client-chat"
-	//implementation "org.springframework.ai:spring-ai-vector-store"
-	//implementation 'org.springframework.boot:spring-boot-starter-webflux'
-	
-	//implementation "org.springframework.ai:spring-ai-pgvector-store"
-	//implementation 'org.springframework.ai:spring-ai-starter-vector-store-pgvector'
+    // Email
+    implementation 'org.springframework.boot:spring-boot-starter-mail'
+    implementation 'jakarta.mail:jakarta.mail-api:2.1.2'
+    implementation 'com.sun.mail:jakarta.mail:2.0.1'
 
-	// Dành cho việc theo dõi và giám sát ứng dụng
-	implementation 'org.springframework.boot:spring-boot-starter-actuator' 
-	// Tích hợp Micrometer với Prometheus để thu thập metrics
-	implementation 'io.micrometer:micrometer-registry-prometheus'
-   
-   // Hỗ trợ ghi log dưới dạng JSON, dễ dàng cho Logstash thu thập
-	implementation 'net.logstash.logback:logstash-logback-encoder:7.4'
+    // JWT
+    implementation 'io.jsonwebtoken:jjwt-api:0.11.5'
+    runtimeOnly 'io.jsonwebtoken:jjwt-impl:0.11.5'
+    runtimeOnly 'io.jsonwebtoken:jjwt-jackson:0.11.5'
 
- // https://mvnrepository.com/artifact/org.flywaydb/flyway-core
-	implementation("org.flywaydb:flyway-database-postgresql")
-    
-    implementation 'com.pgvector:pgvector:0.1.5'
-    
-    implementation 'org.springframework.boot:spring-boot-starter-cache'
-    // https://mvnrepository.com/artifact/com.github.ben-manes.caffeine/caffeine
-	implementation("com.github.ben-manes.caffeine:caffeine:3.2.2")
-    
-    // Spring Data Redis với Lettuce client
-    implementation 'org.springframework.boot:spring-boot-starter-data-redis'
-    
-    // Jackson cho serialization
-    implementation 'com.fasterxml.jackson.core:jackson-databind'
-    implementation 'com.fasterxml.jackson.datatype:jackson-datatype-jsr310'
-    
+    // Google OAuth
+    implementation 'com.google.api-client:google-api-client:2.3.0'
+    implementation 'com.google.oauth-client:google-oauth-client-jetty:1.35.0'
+    implementation 'com.google.http-client:google-http-client-jackson2:1.45.1'
+
+    // Logging & Metrics
+    implementation 'net.logstash.logback:logstash-logback-encoder:7.4'
+    implementation 'io.micrometer:micrometer-registry-prometheus'
+
     // Validation
     implementation 'jakarta.validation:jakarta.validation-api:3.0.2'
 
-    // JWT (JJWT)
-    implementation 'io.jsonwebtoken:jjwt-api:0.11.5'
- 
-   runtimeOnly 'io.jsonwebtoken:jjwt-impl:0.11.5'
-    runtimeOnly 'io.jsonwebtoken:jjwt-jackson:0.11.5'
+    // CSV
+    implementation 'com.opencsv:opencsv:5.9'
+
+    // 🧠 LangChain4j (Sử dụng BOM để đồng bộ version)
+    implementation platform("dev.langchain4j:langchain4j-bom:0.35.0")
+    implementation 'dev.langchain4j:langchain4j'
+    implementation 'dev.langchain4j:langchain4j-spring-boot-starter'
+    implementation 'dev.langchain4j:langchain4j-open-ai'
+    implementation 'dev.langchain4j:langchain4j-pgvector'
+    implementation 'dev.langchain4j:langchain4j-document-parser-apache-tika'
+    implementation 'org.apache.tika:tika-parsers-standard-package:2.9.2'
+
+    // Redis
+    implementation 'org.springframework.boot:spring-boot-starter-data-redis'
 
     // Lombok
     compileOnly 'org.projectlombok:lombok'
     annotationProcessor 'org.projectlombok:lombok'
 
-    // PostgreSQL JDBC
-    implementation 'org.postgresql:postgresql:42.7.3'
-
-    // JavaMailSender - dùng để gửi mã xác minh qua email
-    implementation 'org.springframework.boot:spring-boot-starter-mail'
-    implementation 'jakarta.mail:jakarta.mail-api:2.1.2'
-    implementation 'com.sun.mail:jakarta.mail:2.0.1'    
-
-    // Google ID Token verification
-	implementation 'com.google.api-client:google-api-client:2.3.0'
-	implementation 'com.google.oauth-client:google-oauth-client-jetty:1.35.0'
-	implementation 'com.google.http-client:google-http-client-jackson2:1.45.1'
-	implementation 'com.google.oauth-client:google-oauth-client-jetty:1.35.0'
-
-    // Unit test
+    // Test
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
     
-    // https://mvnrepository.com/artifact/com.opencsv/opencsv
-	implementation("com.opencsv:opencsv:5.9")
-	
-	implementation 'org.flywaydb:flyway-core'
-    implementation 'org.flywaydb:flyway-database-postgresql'
+    implementation 'org.springframework.retry:spring-retry:2.0.5'
 }
 
 tasks.named('test') {
-   
- useJUnitPlatform()
+    useJUnitPlatform()
 }

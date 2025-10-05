@@ -26,6 +26,7 @@ import dev.langchain4j.memory.chat.MessageWindowChatMemory;
 import dev.langchain4j.model.chat.ChatLanguageModel;
 import dev.langchain4j.model.chat.StreamingChatLanguageModel;
 import dev.langchain4j.model.embedding.EmbeddingModel;
+import dev.langchain4j.model.moderation.ModerationModel;
 import dev.langchain4j.model.openai.*; // Sửa 1: Import cả package
 import dev.langchain4j.service.AiServices;
 import dev.langchain4j.store.memory.chat.InMemoryChatMemoryStore;
@@ -145,6 +146,32 @@ public class LangChain4jConfig {
 	@Bean
 	public FinancialAnalystAgent financialAnalystAgent(ChatLanguageModel chatLanguageModel) {
 		return AiServices.create(FinancialAnalystAgent.class, chatLanguageModel);
+	}
+	
+	// ✅ THÊM BEAN MỚI NÀY VÀO ĐÂY
+	@Bean
+	@Qualifier("titleGenerationModel") // Đặt tên định danh cho model này
+	public ChatLanguageModel titleGenerationModel(TokenUsageRepository tokenUsageRepository, 
+                                                UserRepository userRepository) {
+		OpenAiChatModelName modelEnum = OpenAiChatModelName.GPT_3_5_TURBO;
+		String modelName = modelEnum.toString();
+
+		ChatLanguageModel openAiModel = OpenAiChatModel.builder()
+				.apiKey(openAiApiKey)
+				.modelName(modelEnum)
+				.temperature(0.5) // Nhiệt độ vừa phải để có tiêu đề sáng tạo một chút
+                .timeout(Duration.ofSeconds(15)) // Thời gian chờ ngắn hơn cho tác vụ đơn giản
+                .build();
+		
+        // Vẫn bọc bằng TrackedChatLanguageModel để theo dõi chi phí
+		return new TrackedChatLanguageModel(openAiModel, modelName, tokenUsageRepository, userRepository);
+	}
+	
+	@Bean
+	public ModerationModel moderationModel(@Value("${langchain.chat-model.openai.api-key}") String apiKey) {
+	    return OpenAiModerationModel.builder()
+	            .apiKey(apiKey)
+	            .build();
 	}
 	
 //	@Bean

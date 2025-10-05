@@ -122,14 +122,11 @@ public class ChatMessageService {
         
         ChatMessage savedMessage = chatMessageRepository.save(message);
         
-        // Tự động lưu embedding vào vector database
-//        try {
-//            vectorStoreService.saveMessageEmbedding(savedMessage, session);
-//            log.debug("Đã lưu embedding cho message {}", savedMessage.getId());
-//        } catch (Exception e) {
-//            log.warn("Không thể lưu embedding cho message {}: {}", savedMessage.getId(), e.getMessage());
-//        }
-        
+        // ✅ KÍCH HOẠT CẬP NHẬT `updatedAt`
+        // Bằng cách gọi save() trên session, chúng ta báo cho JPA biết
+        // rằng entity này đã thay đổi, từ đó kích hoạt @PreUpdate.
+        chatSessionRepo.save(session);
+
         return savedMessage;
     }
     

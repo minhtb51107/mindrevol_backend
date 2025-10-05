@@ -20,5 +20,12 @@ public interface ChatSessionRepository extends JpaRepository<ChatSession, Long> 
 	
 	// <-- Thêm phương thức mới để tìm các session được cập nhật gần đây
     List<ChatSession> findByUpdatedAtAfter(LocalDateTime dateTime);
+    
+ // ✅ THÊM PHƯƠNG THỨC MỚI NÀY
+    /**
+     * Tìm tất cả các phiên chat của một người dùng và sắp xếp chúng
+     * theo thời gian cập nhật gần nhất (giảm dần).
+     */
+    List<ChatSession> findByUserOrderByUpdatedAtDesc(User user);
 }
 
