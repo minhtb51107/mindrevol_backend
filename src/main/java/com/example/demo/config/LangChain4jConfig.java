@@ -46,38 +46,65 @@ public class LangChain4jConfig {
 	private String openAiApiKey;
 
 	// --- CẤU HÌNH CÁC MODEL CHÍNH ---
+	// ✅ THÊM BEAN NÀY VÀO
+    // Tokenizer giúp đếm số token một cách chính xác trước khi gửi API
+    @Bean
+    public OpenAiTokenizer openAiTokenizer() {
+        return new OpenAiTokenizer(OpenAiChatModelName.GPT_3_5_TURBO);
+    }
+	
+	   // ✅ Cập nhật RouterAgent để sử dụng model nâng cao
+    @Bean
+    @Lazy
+    public RouterAgent routerAgent(@Qualifier("advancedChatLanguageModel") ChatLanguageModel chatLanguageModel, // <-- Sửa ở đây
+                                   AgentTools agentTools,
+                                   ChatMemoryProvider chatMemoryProvider) {
+        return AiServices.builder(RouterAgent.class)
+                .chatLanguageModel(chatLanguageModel) // Bây giờ nó sẽ nhận bean GPT-4
+                .tools(agentTools)
+                .chatMemoryProvider(chatMemoryProvider)
+                .build();
+    }
 
-	@Bean
-	public RouterAgent routerAgent(@Qualifier("chatLanguageModel") ChatLanguageModel chatLanguageModel,
-								   AgentTools agentTools,
-								   ChatMemoryProvider chatMemoryProvider) {
-		return AiServices.builder(RouterAgent.class)
-				.chatLanguageModel(chatLanguageModel)
-				.tools(agentTools)
-				.chatMemoryProvider(chatMemoryProvider)
-				.build();
-	}
+    // ✅ Sửa Bean chính: Chuyển sang GPT-3.5-TURBO làm mặc định
+    @Bean
+    @Primary
+    @Lazy
+    public ChatLanguageModel chatLanguageModel(TokenUsageRepository tokenUsageRepository,
+                                               UserRepository userRepository) {
+        OpenAiChatModelName modelEnum = OpenAiChatModelName.GPT_3_5_TURBO; // <-- THAY ĐỔI TẠI ĐÂY
+        String modelName = modelEnum.toString();
 
-	@Bean
-	@Primary
-	@Lazy // ✅ Thêm @Lazy
-	public ChatLanguageModel chatLanguageModel(TokenUsageRepository tokenUsageRepository,
-			UserRepository userRepository) {
+        ChatLanguageModel openAiModel = OpenAiChatModel.builder()
+                .apiKey(openAiApiKey)
+                .modelName(modelEnum)
+                .temperature(0.7)
+                .timeout(Duration.ofSeconds(45))
+                .logRequests(true)
+                .logResponses(true)
+                .build();
+        return new TrackedChatLanguageModel(openAiModel, modelName, tokenUsageRepository, userRepository);
+    }
 
-		OpenAiChatModelName modelEnum = OpenAiChatModelName.GPT_4_TURBO_PREVIEW;
-		String modelName = modelEnum.toString();
+    // ✅ Tạo một Bean mới dành riêng cho các tác vụ nâng cao
+    @Bean
+    @Qualifier("advancedChatLanguageModel") // <-- Đặt tên định danh
+    @Lazy
+    public ChatLanguageModel advancedChatLanguageModel(TokenUsageRepository tokenUsageRepository,
+                                                      UserRepository userRepository) {
+        OpenAiChatModelName modelEnum = OpenAiChatModelName.GPT_4_TURBO_PREVIEW; // <-- Giữ GPT-4 ở đây
+        String modelName = modelEnum.toString();
 
-		ChatLanguageModel openAiModel = OpenAiChatModel.builder()
-				.apiKey(openAiApiKey)
-				.modelName(modelEnum)
-				.temperature(0.7)
-				.timeout(Duration.ofSeconds(45))
-				.logRequests(true)
-				.logResponses(true)
-				.build();
-
-		return new TrackedChatLanguageModel(openAiModel, modelName, tokenUsageRepository, userRepository);
-	}
+        ChatLanguageModel openAiModel = OpenAiChatModel.builder()
+                .apiKey(openAiApiKey)
+                .modelName(modelEnum)
+                .temperature(0.7)
+                .timeout(Duration.ofSeconds(90)) // Tăng thời gian chờ cho model mạnh hơn
+                .logRequests(true)
+                .logResponses(true)
+                .build();
+        return new TrackedChatLanguageModel(openAiModel, modelName, tokenUsageRepository, userRepository);
+    }
 
 	@Bean
 	@Qualifier("classificationModel")
@@ -168,12 +195,27 @@ public class LangChain4jConfig {
 		return DocumentSplitters.recursive(500, 50, new OpenAiTokenizer(OpenAiChatModelName.GPT_4));
 	}
 
-	@Bean
-	public ChatMemoryProvider chatMemoryProvider() {
-		return sessionId -> MessageWindowChatMemory.builder()
-				.id(sessionId)
-				.maxMessages(20)
-				.chatMemoryStore(new InMemoryChatMemoryStore())
-				.build();
-	}
+	// ✅ SỬA LẠI BEAN `chatMemoryProvider` ĐỂ DÙNG GIẢI PHÁP THAY THẾ
+		@Bean
+		public ChatMemoryProvider chatMemoryProvider() {
+	        // MessageWindowChatMemory giữ lại N tin nhắn cuối cùng.
+	        // Đây là cách đơn giản và hiệu quả để ngăn context phình to vô hạn.
+			return sessionId -> MessageWindowChatMemory.builder()
+					.id(sessionId)
+					.maxMessages(12) // Giữ lại 12 tin nhắn gần nhất (6 cặp hỏi-đáp)
+					.chatMemoryStore(new InMemoryChatMemoryStore())
+					.build();
+		}
+	
+	// ✅ BƯỚC 1: THÊM BEAN MỚI NÀY VÀO
+    // Di chuyển interface ra khỏi AgentTools và định nghĩa nó ở đây hoặc trong một file riêng
+    public interface OpenAIWebSearchAssistant {
+        String search(String query);
+    }
+    
+    @Bean
+    public OpenAIWebSearchAssistant openAIWebSearchAssistant(
+            @Qualifier("chatLanguageModel") ChatLanguageModel chatLanguageModel) { // Dùng model mạnh nhất
+        return AiServices.create(OpenAIWebSearchAssistant.class, chatLanguageModel);
+    }
 }

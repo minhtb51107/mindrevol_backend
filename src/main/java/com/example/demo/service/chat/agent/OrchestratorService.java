@@ -10,6 +10,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import com.example.demo.service.chat.ChatMessageService;
+import com.example.demo.service.chat.QueryPreProcessingService;
 import com.example.demo.service.chat.QuestionAnswerCacheService;
 import com.example.demo.service.chat.agent.tools.ChitChatService;
 import com.example.demo.service.chat.agent.tools.MemoryQueryService;
@@ -27,9 +28,6 @@ import dev.langchain4j.data.message.UserMessage;
 import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 @Slf4j
 @Service
 public class OrchestratorService {
@@ -38,28 +36,15 @@ public class OrchestratorService {
     private final QuestionAnswerCacheService cacheService;
     private final FollowUpQueryDetectionService followUpQueryDetectionService;
     private final QueryRewriteService queryRewriteService;
-    
-    // ✅ SỬ DỤNG LẠI KIẾN TRÚC PHÂN TẦNG ĐÚNG ĐẮN
-    private final QueryIntentClassificationService intentClassifier; // Bộ phân loại rẻ tiền
-    private final RouterAgent routerAgent; // Bộ điều phối đắt tiền
+    private final QueryIntentClassificationService intentClassifier;
+    private final RouterAgent routerAgent;
     private final RAGService ragService;
     private final ChitChatService chitChatService;
     private final MemoryQueryService memoryQueryService;
-    private final GuardrailManager guardrailManager; // <-- THÊM FIELD NÀY
+    private final GuardrailManager guardrailManager;
+    private final QueryPreProcessingService queryPreProcessingService; // <-- Thêm field mới
     
-    private static final Logger logger = LoggerFactory.getLogger(OrchestratorService.class);
-
-
-    @PostConstruct
-    public void initialize() {
-        logger.info("OrchestratorService is initializing...");
-        // Logic khởi tạo của bạn ở đây
-        // Nếu có lời gọi API, hãy thêm log trước và sau nó
-        logger.info("About to make an API call to OpenAI for initialization.");
-        // openAiApi.call(...);
-        logger.info("Finished API call to OpenAI for initialization.");
-    }
-
+    // Constructor và các phương thức khác không thay đổi...
     @Autowired
     public OrchestratorService(ChatMessageService chatMessageService,
                                QuestionAnswerCacheService cacheService,
@@ -70,8 +55,8 @@ public class OrchestratorService {
                                RAGService ragService,
                                ChitChatService chitChatService,
                                MemoryQueryService memoryQueryService,
-                               GuardrailManager guardrailManager // <-- INJECT VÀO ĐÂY
-                               ) {
+                               QueryPreProcessingService queryPreProcessingService,
+                               GuardrailManager guardrailManager) {
         this.chatMessageService = chatMessageService;
         this.cacheService = cacheService;
         this.followUpQueryDetectionService = followUpQueryDetectionService;
@@ -81,40 +66,49 @@ public class OrchestratorService {
         this.ragService = ragService;
         this.chitChatService = chitChatService;
         this.memoryQueryService = memoryQueryService;
-        this.guardrailManager = guardrailManager; // <-- GÁN GIÁ TRỊ
+        this.guardrailManager = guardrailManager;
+        this.queryPreProcessingService = queryPreProcessingService;
         log.info("Orchestrator initialized with cost-optimized Tiered Routing architecture.");
     }
-
- // ... bên trong class OrchestratorService
-
+    
+    // --- BẮT ĐẦU PHẦN TÍCH HỢP TỐI ƯU HÓA ---
     public String orchestrate(String userMessage, RagContext context, boolean regenerate) {
-        // ✅ BƯỚC 1: KIỂM DUYỆT ĐẦU VÀO
         String sanitizedUserMessage = guardrailManager.checkInput(userMessage);
         if (!sanitizedUserMessage.equals(userMessage)) {
             saveConversationAndUpdateMemory(context, userMessage, sanitizedUserMessage);
             return sanitizedUserMessage;
         }
 
-        // --- LOGIC HIỆN TẠI CỦA BẠN (giữ nguyên và sửa lỗi) ---
+        // ✅ BƯỚC 1: TIỀN XỬ LÝ (NÉN) TRUY VẤN
+        // Đây là bước đầu tiên, trước mọi logic khác
+        String processedQuery = queryPreProcessingService.process(sanitizedUserMessage);
         List<ChatMessage> chatHistory = context.getChatMemory().messages();
         String rewrittenUserMessage = sanitizedUserMessage;
+        
+        QueryIntent intent = intentClassifier.classify(processedQuery); // Dùng `processedQuery`
+        context.setIntent(intent);
+        log.info("Classified intent for session {}: {}", context.getSession().getId(), intent);
+        
+        String finalQuery = processedQuery; // Bắt đầu với query đã xử lý
 
-        if (followUpQueryDetectionService.isFollowUp(rewrittenUserMessage)) {
-            rewrittenUserMessage = queryRewriteService.rewrite(chatHistory, rewrittenUserMessage);
+        // BƯỚC 2: CHỈ CHẠY CÁC BƯỚC XỬ LÝ NÂNG CAO NẾU KHÔNG PHẢI CHIT_CHAT
+        if (intent != QueryIntent.CHIT_CHAT) {
+            log.debug("Intent is not CHIT_CHAT, proceeding with follow-up detection and query rewrite.");
+            if (followUpQueryDetectionService.isFollowUp(rewrittenUserMessage)) {
+                log.info("Follow-up query detected. Rewriting query for session {}", context.getSession().getId());
+                rewrittenUserMessage = queryRewriteService.rewrite(chatHistory, rewrittenUserMessage);
+            }
+        } else {
+            log.debug("Intent is CHIT_CHAT, skipping follow-up and rewrite steps to save costs.");
         }
         context.setQuery(rewrittenUserMessage);
-
+        
         if (!regenerate) {
-            // ✅ ĐÃ PHỤC HỒI: Khai báo và gán giá trị cho contextForLookup
-            // Biến này được dùng để làm cho key của cache chính xác hơn, đặc biệt với các câu hỏi nối tiếp.
             String contextForLookup = determineContextForLookup(rewrittenUserMessage, getLastBotMessage(chatHistory));
-            
             Optional<String> cachedAnswer = cacheService.findCachedAnswer(rewrittenUserMessage, contextForLookup);
             if (cachedAnswer.isPresent()) {
                 log.info("Cache hit for session {}. Returning cached answer.", context.getSession().getId());
                 String answerFromCache = cachedAnswer.get();
-                
-                // KIỂM DUYỆT ĐẦU RA TỪ CACHE
                 String sanitizedAnswer = guardrailManager.checkOutput(answerFromCache);
                 saveConversationAndUpdateMemory(context, userMessage, sanitizedAnswer);
                 return sanitizedAnswer;
@@ -122,16 +116,14 @@ public class OrchestratorService {
         }
         log.info("Cache miss or regenerate request for session {}.", context.getSession().getId());
 
-        QueryIntent intent = intentClassifier.classify(rewrittenUserMessage);
-        log.info("Classified intent for session {}: {}", context.getSession().getId(), intent);
-
+        // BƯỚC 3: SỬ DỤNG 'intent' ĐÃ ĐƯỢC PHÂN LOẠI Ở TRÊN
         String agentResponse;
         String chosenAgentName = "unknown";
 
         switch (intent) {
             case CHIT_CHAT:
                 chosenAgentName = "ChitChatService";
-                agentResponse = chitChatService.chitChat(rewrittenUserMessage, context.getSession().getId());
+                agentResponse = chitChatService.chitChat(context); 
                 break;
             case RAG_QUERY:
             case STATIC_QUERY:
@@ -150,11 +142,13 @@ public class OrchestratorService {
                 break;
         }
         
-        // ✅ BƯỚC 2: KIỂM DUYỆT ĐẦU RA
         String finalSanitizedAnswer = guardrailManager.checkOutput(agentResponse);
 
         return handleCachingAndPersistence(userMessage, rewrittenUserMessage, finalSanitizedAnswer, context, chosenAgentName);
     }
+    // --- KẾT THÚC PHẦN TÍCH HỢP TỐI ƯU HÓA ---
+
+    // ... các phương thức private còn lại (handleCachingAndPersistence, determineContextForLookup, ...) giữ nguyên ...
 
     private String handleCachingAndPersistence(String originalUserMessage, String rewrittenUserMessage, String finalAnswer, RagContext context, String chosenAgentName) {
         if (finalAnswer != null && !finalAnswer.isEmpty()) {

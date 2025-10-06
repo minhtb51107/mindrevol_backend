@@ -8,6 +8,7 @@ import com.example.demo.service.chat.integration.TrackedChatLanguageModel;
 import com.example.demo.service.chat.orchestration.context.RagContext;
 import com.example.demo.service.chat.orchestration.pipeline.PipelineStep;
 import com.example.demo.service.chat.orchestration.pipeline.result.GenerationStepResult;
+import com.example.demo.service.chat.orchestration.rules.QueryIntent;
 import com.example.demo.service.chat.preference.UserPreferenceService;
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessage;
@@ -181,18 +182,37 @@ public class GenerationStep implements PipelineStep {
         Map<String, Object> userPrefs = userPreferenceService.getUserPreferencesForPrompt(context.getUser().getId());
         String ragContextStr = context.getRagContextString() != null && !context.getRagContextString().isBlank()
                 ? context.getRagContextString()
-                : ""; // Không cần fallback về tài liệu gốc nữa vì mục tiêu là tiết kiệm token.
+                : "";
         String fileContext = extractFileContext(context);
 
         List<ChatMessage> messages = new ArrayList<>();
         StringBuilder sb = new StringBuilder();
-        sb.append("Bạn là một trợ lý AI hữu ích.\n");
-        sb.append("--- HƯỚNG DẪN QUAN TRỌNG ---\n");
-        sb.append("1. CHỈ trả lời câu hỏi dựa trên thông tin có trong \"NGỮ CẢNH TỪ FILE ĐÍNH KÈM\" hoặc \"BỐI CẢNH TỪ BỘ NHỚ RAG\".\n");
-        sb.append("2. Nếu thông tin không có trong ngữ cảnh được cung cấp, hãy trả lời chính xác là: \"Tôi không tìm thấy thông tin về vấn đề này\".\n");
-        sb.append("3. KHÔNG được tự ý suy diễn hoặc sử dụng kiến thức bên ngoài để trả lời.\n");
-        sb.append("--- KẾT THÚC HƯỚNG DẪN ---\n\n");
 
+        // ✅ BẮT ĐẦU THAY ĐỔI LOGIC TẠI ĐÂY
+        
+        // Lấy intent từ context mà Orchestrator đã lưu
+        QueryIntent intent = context.getIntent();
+
+        // Nếu intent là CHIT_CHAT (hoặc null trong trường hợp đặc biệt), dùng prompt thân thiện
+        if (intent == QueryIntent.CHIT_CHAT) {
+            // ✅ THÊM DÒNG LOG NÀY VÀO
+            log.info("✅✅✅ ĐÃ VÀO ĐÚNG LUỒNG CHIT_CHAT - SỬ DỤNG PROMPT THÂN THIỆN ✅✅✅");
+            
+            sb.append("Bạn là một trợ lý AI thân thiện và hữu ích tên là MindREVOL.\n");
+            sb.append("Hãy trò chuyện với người dùng một cách tự nhiên. Nếu người dùng chào, hãy chào lại và hỏi thăm họ.\n");
+        } else {
+            // ✅ THÊM DÒNG LOG NÀY VÀO
+            log.warn("❌❌❌ LUỒNG CHIT_CHAT BỊ LỖI - ĐANG SỬ DỤNG PROMPT RAG NGHIÊM NGẶT ❌❌❌");
+            // Ngược lại, với các intent khác (RAG, MEMORY_QUERY...), dùng prompt RAG nghiêm ngặt
+            sb.append("Bạn là một trợ lý AI hữu ích.\n");
+            sb.append("--- HƯỚNG DẪN QUAN TRỌNG ---\n");
+            sb.append("1. CHỈ trả lời câu hỏi dựa trên thông tin có trong \"NGỮ Cảnh TỪ FILE ĐÍNH KÈM\" hoặc \"BỐI CẢNH TỪ BỘ NHỚ RAG\".\n");
+            sb.append("2. Nếu thông tin không có trong ngữ cảnh được cung cấp, hãy trả lời chính xác là: \"Tôi không tìm thấy thông tin về vấn đề này\".\n");
+            sb.append("3. KHÔNG được tự ý suy diễn hoặc sử dụng kiến thức bên ngoài để trả lời.\n");
+            sb.append("--- KẾT THÚC HƯỚNG DẪN ---\n\n");
+        }
+
+        // ✅ KẾT THÚC THAY ĐỔI LOGIC
 
         if (userPrefs != null && !userPrefs.isEmpty()) {
             sb.append("\n--- SỞ THÍCH CỦA NGƯỜI DÙNG ---\n");

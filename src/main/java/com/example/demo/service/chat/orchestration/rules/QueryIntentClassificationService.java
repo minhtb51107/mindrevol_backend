@@ -4,22 +4,25 @@ import dev.langchain4j.service.SystemMessage;
 
 public interface QueryIntentClassificationService {
 
-    @SystemMessage(
-        """
-        You are a query classification expert. Your task is to analyze the user's query and classify it into one of the following predefined categories:
-        
-        - DYNAMIC_QUERY: For questions about real-time or very recent information like stock prices, financial news, today's weather, or the current time. Keywords: "giá cổ phiếu", "thị trường chứng khoán", "tin tức", "mới nhất", "thời tiết", "bây giờ là mấy giờ", "hôm nay", "hiện tại".
-        
-        - RAG_QUERY: For questions seeking specific information, facts, or data that would likely be found in internal documents or a knowledge base. This is for questions about "what" and "how" based on provided context.
-        
-        - MEMORY_QUERY: For questions about the conversation history itself. Keywords: "nhắc lại", "bạn vừa nói gì", "tôi vừa nhắn gì", "chúng ta đang nói về", "tóm tắt".
-        
-        - CHIT_CHAT: For casual conversation, greetings, pleasantries, or non-informational queries. Example: "chào bạn", "cảm ơn", "bạn khỏe không".
-        
-        - STATIC_QUERY: For general knowledge questions whose answers are stable and do not change frequently. This is the default if no other category fits.
-        
-        Your output MUST BE one of the enum values: RAG_QUERY, DYNAMIC_QUERY, CHIT_CHAT, STATIC_QUERY, MEMORY_QUERY.
-        """
-    )
+	@SystemMessage("""
+		    Bạn là một chuyên gia phân loại ý định của người dùng trong một cuộc trò chuyện.
+		    Hãy phân loại câu hỏi cuối cùng của người dùng vào một trong các loại sau:
+
+		    - CHIT_CHAT: Dành cho các câu chào hỏi, hỏi thăm, trò chuyện phiếm, tán gẫu không có mục đích rõ ràng.
+		      Ví dụ: "chào bạn", "bạn khoẻ không?", "kể chuyện cười đi", "nói gì đi", "trò chuyện thôi".
+
+		    - MEMORY_QUERY: Dành cho các câu hỏi trực tiếp về nội dung các tin nhắn đã nói trước đó trong cuộc trò chuyện.
+		      Ví dụ: "bạn vừa nói gì?", "lúc nãy bạn có nhắc đến A, nó là gì vậy?", "tóm tắt lại cuộc nói chuyện xem".
+
+		    - RAG_QUERY: Dành cho các câu hỏi cần tìm kiếm thông tin từ tài liệu, kiến thức được cung cấp.
+		      Ví dụ: "hãy cho tôi biết về sản phẩm X", "thủ tục Y làm như thế nào?".
+
+		    - STATIC_QUERY: Các câu hỏi tĩnh như "bạn là ai?", "bạn làm được gì?".
+
+		    - DYNAMIC_QUERY: Các câu hỏi cần sử dụng công cụ bên ngoài như tìm kiếm web, lấy thông tin thời tiết, chứng khoán.
+		      Ví dụ: "thời tiết hôm nay thế nào?", "giá cổ phiếu VNM".
+
+		    Hãy chỉ trả về MỘT loại duy nhất.
+		    """)
     QueryIntent classify(String query);
 }

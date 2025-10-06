@@ -19,6 +19,16 @@ import com.example.demo.service.chat.tools.WeatherTool;
 import dev.langchain4j.model.chat.ChatLanguageModel;
 import dev.langchain4j.service.AiServices;
 
+import com.example.demo.model.auth.User;
+import com.example.demo.model.chat.ChatSession;
+import com.example.demo.repository.chat.ChatSessionRepository;
+import com.example.demo.service.chat.memory.langchain.LangChainChatMemoryService;
+import com.example.demo.service.chat.orchestration.context.RagContext;
+import com.example.demo.service.chat.orchestration.rules.QueryIntent;
+import dev.langchain4j.memory.ChatMemory;
+import lombok.RequiredArgsConstructor; // Sử dụng @RequiredArgsConstructor để gọn hơn
+import com.example.demo.config.LangChain4jConfig; // Import nếu bạn đặt interface ở đó
+
 @Component
 @Slf4j
 public class AgentTools {
@@ -42,9 +52,18 @@ public class AgentTools {
     }
 
     // 2. Khai báo biến cho trợ lý
-    private final OpenAIWebSearchAssistant openAIWebSearchAssistant;
+    //private final OpenAIWebSearchAssistant openAIWebSearchAssistant;
+    
+
+    // ✅ Thêm các dependency cần để tạo RagContext
+    private final ChatSessionRepository chatSessionRepository;
+    private final LangChainChatMemoryService chatMemoryService;
 
     // 3. Cập nhật Constructor để inject ChatLanguageModel và khởi tạo trợ lý
+ // Khai báo biến cho trợ lý
+    private final LangChain4jConfig.OpenAIWebSearchAssistant openAIWebSearchAssistant;
+
+    // ✅ BƯỚC 2: CẬP NHẬT CONSTRUCTOR
     public AgentTools(
             RAGService ragService,
             ChitChatService chitChatService,
@@ -53,7 +72,9 @@ public class AgentTools {
             TimeTool timeTool,
             StockTool stockTool,
             SerperWebSearchEngine webSearchEngine,
-            ChatLanguageModel chatLanguageModel // <-- Inject ChatLanguageModel vào đây
+            LangChain4jConfig.OpenAIWebSearchAssistant openAIWebSearchAssistant, // <-- Inject bean đã được tạo
+            ChatSessionRepository chatSessionRepository,
+            LangChainChatMemoryService chatMemoryService
     ) {
         this.ragService = ragService;
         this.chitChatService = chitChatService;
@@ -62,9 +83,12 @@ public class AgentTools {
         this.timeTool = timeTool;
         this.stockTool = stockTool;
         this.webSearchEngine = webSearchEngine;
-        
-        // Khởi tạo trợ lý tìm kiếm OpenAI bằng AiServices
-        this.openAIWebSearchAssistant = AiServices.create(OpenAIWebSearchAssistant.class, chatLanguageModel);
+        this.openAIWebSearchAssistant = openAIWebSearchAssistant; // <-- Gán trực tiếp
+        this.chatSessionRepository = chatSessionRepository;
+        this.chatMemoryService = chatMemoryService;
+
+        // XÓA DÒNG KHỞI TẠO CŨ NÀY ĐI
+        // this.openAIWebSearchAssistant = AiServices.create(OpenAIWebSearchAssistant.class, chatLanguageModel);
     }
     
     // --- KẾT THÚC THAY ĐỔI ---
@@ -95,11 +119,29 @@ public class AgentTools {
         return ragService.answerFromDocuments(query, sessionId);
     }
 
-    @Tool("Sử dụng cho các cuộc trò chuyện thông thường, chào hỏi, tạm biệt...")
-    public String useChitChatAgent(String query, @MemoryId Long sessionId) { 
+    @Tool("Sử dụng cho các cuộc trò chuyện thông thường, chào hỏi, tạm biệt, tán gẫu không có mục đích cụ thể.")
+    public String useChitChatAgent(String query, @MemoryId Long sessionId) {
         log.info(">>> Calling ChitChatAgent Tool for session {} with query: '{}'", sessionId, query);
-        return chitChatService.chitChat(query, sessionId);
+
+        // ✅ TẠO RAGCONTEXT TẠM THỜI VỚI INTENT ĐÚNG
+        ChatSession session = chatSessionRepository.findById(sessionId)
+                .orElseThrow(() -> new RuntimeException("Session not found for tool call: " + sessionId));
+        User user = session.getUser();
+        ChatMemory chatMemory = chatMemoryService.getChatMemory(sessionId);
+
+        RagContext tempContext = RagContext.builder()
+                .session(session)
+                .user(user)
+                .chatMemory(chatMemory)
+                .initialQuery(query)
+                .query(query)
+                .intent(QueryIntent.CHIT_CHAT) // <--- Đặt intent một cách tường minh!
+                .build();
+
+        // Gọi chitChat với context vừa tạo
+        return chitChatService.chitChat(tempContext);
     }
+
 
     @Tool("Sử dụng để trả lời các câu hỏi về các tin nhắn đã trò chuyện gần đây...")
     public String useMemoryQueryAgent(String query, @MemoryId Long sessionId) {
