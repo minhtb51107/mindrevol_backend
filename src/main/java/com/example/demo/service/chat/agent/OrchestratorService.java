@@ -7,6 +7,7 @@ import java.util.Map;
 import java.util.Optional;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier; // ✅ THÊM IMPORT
 import org.springframework.stereotype.Service;
 
 import com.example.demo.service.chat.ChatMessageService;
@@ -18,6 +19,8 @@ import com.example.demo.service.chat.agent.tools.RAGService;
 import com.example.demo.service.chat.guardrail.GuardrailManager;
 import com.example.demo.service.chat.orchestration.context.RagContext;
 import com.example.demo.service.chat.orchestration.rules.FollowUpQueryDetectionService;
+import com.example.demo.service.chat.orchestration.rules.QueryComplexity; // ✅ THÊM IMPORT
+import com.example.demo.service.chat.orchestration.rules.QueryComplexityAnalysisService; // ✅ THÊM IMPORT
 import com.example.demo.service.chat.orchestration.rules.QueryIntent;
 import com.example.demo.service.chat.orchestration.rules.QueryIntentClassificationService;
 import com.example.demo.service.chat.orchestration.rules.QueryRewriteService;
@@ -32,46 +35,58 @@ import lombok.extern.slf4j.Slf4j;
 @Service
 public class OrchestratorService {
 
+    // --- Các dependency hiện có ---
     private final ChatMessageService chatMessageService;
     private final QuestionAnswerCacheService cacheService;
     private final FollowUpQueryDetectionService followUpQueryDetectionService;
     private final QueryRewriteService queryRewriteService;
     private final QueryIntentClassificationService intentClassifier;
-    private final RouterAgent routerAgent;
     private final RAGService ragService;
     private final ChitChatService chitChatService;
     private final MemoryQueryService memoryQueryService;
     private final GuardrailManager guardrailManager;
-    private final QueryPreProcessingService queryPreProcessingService; // <-- Thêm field mới
-    
-    // Constructor và các phương thức khác không thay đổi...
+    private final QueryPreProcessingService queryPreProcessingService;
+
+    // --- ✅ THÊM CÁC DEPENDENCY MỚI CHO LOGIC ĐỊNH TUYẾN THÔNG MINH ---
+    private final QueryComplexityAnalysisService complexityAnalyzer;
+    private final ToolUsingAgent simpleRouterAgent;
+    private final ToolUsingAgent advancedRouterAgent; // Thay thế cho RouterAgent cũ
+
     @Autowired
     public OrchestratorService(ChatMessageService chatMessageService,
                                QuestionAnswerCacheService cacheService,
                                FollowUpQueryDetectionService followUpQueryDetectionService,
                                QueryRewriteService queryRewriteService,
                                QueryIntentClassificationService intentClassifier,
-                               RouterAgent routerAgent,
+                               // 🛑 RouterAgent cũ không còn được inject trực tiếp
                                RAGService ragService,
                                ChitChatService chitChatService,
                                MemoryQueryService memoryQueryService,
                                QueryPreProcessingService queryPreProcessingService,
-                               GuardrailManager guardrailManager) {
+                               GuardrailManager guardrailManager,
+                               // ✅ INJECT CÁC BEAN MỚI
+                               QueryComplexityAnalysisService complexityAnalyzer,
+                               @Qualifier("simpleRouterAgent") ToolUsingAgent simpleRouterAgent,
+                               @Qualifier("advancedRouterAgent") ToolUsingAgent advancedRouterAgent) {
         this.chatMessageService = chatMessageService;
         this.cacheService = cacheService;
         this.followUpQueryDetectionService = followUpQueryDetectionService;
         this.queryRewriteService = queryRewriteService;
         this.intentClassifier = intentClassifier;
-        this.routerAgent = routerAgent;
         this.ragService = ragService;
         this.chitChatService = chitChatService;
         this.memoryQueryService = memoryQueryService;
         this.guardrailManager = guardrailManager;
         this.queryPreProcessingService = queryPreProcessingService;
+        
+        // ✅ Gán các dependency mới
+        this.complexityAnalyzer = complexityAnalyzer;
+        this.simpleRouterAgent = simpleRouterAgent;
+        this.advancedRouterAgent = advancedRouterAgent;
+        
         log.info("Orchestrator initialized with cost-optimized Tiered Routing architecture.");
     }
     
-    // --- BẮT ĐẦU PHẦN TÍCH HỢP TỐI ƯU HÓA ---
     public String orchestrate(String userMessage, RagContext context, boolean regenerate) {
         String sanitizedUserMessage = guardrailManager.checkInput(userMessage);
         if (!sanitizedUserMessage.equals(userMessage)) {
@@ -79,19 +94,14 @@ public class OrchestratorService {
             return sanitizedUserMessage;
         }
 
-        // ✅ BƯỚC 1: TIỀN XỬ LÝ (NÉN) TRUY VẤN
-        // Đây là bước đầu tiên, trước mọi logic khác
         String processedQuery = queryPreProcessingService.process(sanitizedUserMessage);
         List<ChatMessage> chatHistory = context.getChatMemory().messages();
-        String rewrittenUserMessage = sanitizedUserMessage;
+        String rewrittenUserMessage = processedQuery; // Bắt đầu với query đã được xử lý
         
-        QueryIntent intent = intentClassifier.classify(processedQuery); // Dùng `processedQuery`
+        QueryIntent intent = intentClassifier.classify(processedQuery);
         context.setIntent(intent);
         log.info("Classified intent for session {}: {}", context.getSession().getId(), intent);
         
-        String finalQuery = processedQuery; // Bắt đầu với query đã xử lý
-
-        // BƯỚC 2: CHỈ CHẠY CÁC BƯỚC XỬ LÝ NÂNG CAO NẾU KHÔNG PHẢI CHIT_CHAT
         if (intent != QueryIntent.CHIT_CHAT) {
             log.debug("Intent is not CHIT_CHAT, proceeding with follow-up detection and query rewrite.");
             if (followUpQueryDetectionService.isFollowUp(rewrittenUserMessage)) {
@@ -116,7 +126,6 @@ public class OrchestratorService {
         }
         log.info("Cache miss or regenerate request for session {}.", context.getSession().getId());
 
-        // BƯỚC 3: SỬ DỤNG 'intent' ĐÃ ĐƯỢC PHÂN LOẠI Ở TRÊN
         String agentResponse;
         String chosenAgentName = "unknown";
 
@@ -134,11 +143,31 @@ public class OrchestratorService {
                 chosenAgentName = "MemoryQueryService";
                 agentResponse = memoryQueryService.answerFromHistory(rewrittenUserMessage, context.getSession().getId());
                 break;
+            
+            // --- ✅ LOGIC MỚI ĐƯỢC TÍCH HỢP TẠI ĐÂY ---
             case DYNAMIC_QUERY:
             default:
-                chosenAgentName = "RouterAgent";
-                log.info("Intent requires dynamic tools, invoking RouterAgent for session {}.", context.getSession().getId());
-                agentResponse = routerAgent.chat(context.getSession().getId(), rewrittenUserMessage);
+                log.info("Intent requires dynamic tools, analyzing complexity for session {}.", context.getSession().getId());
+                QueryComplexity complexity = complexityAnalyzer.analyze(rewrittenUserMessage);
+
+                if (complexity == QueryComplexity.SIMPLE) {
+                    chosenAgentName = "simpleRouterAgent";
+                    log.info("Query is SIMPLE. Attempting with {} (GPT-3.5) for session {}.", chosenAgentName, context.getSession().getId());
+                    try {
+                        // ✅ SỬA LẠI CÁCH GỌI: TRUYỀN TOÀN BỘ CONTEXT
+                        agentResponse = simpleRouterAgent.chat(context);
+                    } catch (Exception e) {
+                        log.warn("simpleRouterAgent failed for session {}. Reason: {}. Retrying with advancedRouterAgent (GPT-4).", context.getSession().getId(), e.getMessage());
+                        chosenAgentName = "advancedRouterAgent_Fallback";
+                        // ✅ SỬA LẠI CÁCH GỌI: TRUYỀN TOÀN BỘ CONTEXT
+                        agentResponse = advancedRouterAgent.chat(context);
+                    }
+                } else {
+                    chosenAgentName = "advancedRouterAgent";
+                    log.info("Query is COMPLEX. Invoking {} (GPT-4) directly for session {}.", chosenAgentName, context.getSession().getId());
+                    // ✅ SỬA LẠI CÁCH GỌI: TRUYỀN TOÀN BỘ CONTEXT
+                    agentResponse = advancedRouterAgent.chat(context);
+                }
                 break;
         }
         
@@ -146,9 +175,8 @@ public class OrchestratorService {
 
         return handleCachingAndPersistence(userMessage, rewrittenUserMessage, finalSanitizedAnswer, context, chosenAgentName);
     }
-    // --- KẾT THÚC PHẦN TÍCH HỢP TỐI ƯU HÓA ---
-
-    // ... các phương thức private còn lại (handleCachingAndPersistence, determineContextForLookup, ...) giữ nguyên ...
+    
+    // ... các phương thức private còn lại (handleCachingAndPersistence, determineContextForLookup, etc.) giữ nguyên ...
 
     private String handleCachingAndPersistence(String originalUserMessage, String rewrittenUserMessage, String finalAnswer, RagContext context, String chosenAgentName) {
         if (finalAnswer != null && !finalAnswer.isEmpty()) {

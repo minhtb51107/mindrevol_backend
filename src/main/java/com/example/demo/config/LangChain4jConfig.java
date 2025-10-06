@@ -5,6 +5,7 @@ import com.example.demo.repository.monitoring.TokenUsageRepository;
 import com.example.demo.service.chat.EmbeddingCacheService;
 import com.example.demo.service.chat.agent.FinancialAnalystAgent;
 import com.example.demo.service.chat.agent.RouterAgent;
+import com.example.demo.service.chat.agent.ToolUsingAgent;
 //import com.example.demo.service.chat.agent.ToolAgent;
 import com.example.demo.service.chat.agent.tools.AgentTools;
 import com.example.demo.service.chat.integration.CachedEmbeddingModel;
@@ -46,6 +47,42 @@ public class LangChain4jConfig {
 	private String openAiApiKey;
 
 	// --- CẤU HÌNH CÁC MODEL CHÍNH ---
+	
+	/**
+     * (MỚI) Định nghĩa một RouterAgent chi phí thấp, sử dụng GPT-3.5.
+     * Agent này sẽ là lựa chọn đầu tiên cho các DYNAMIC_QUERY đơn giản.
+     */
+	@Bean
+	@Qualifier("simpleRouterAgent")
+	public ToolUsingAgent simpleRouterAgent(
+	        @Qualifier("basicChatLanguageModel") ChatLanguageModel chatLanguageModel,
+	        ChatMemoryProvider chatMemoryProvider,
+	        AgentTools agentTools) {
+	    return AiServices.builder(ToolUsingAgent.class)
+	            .chatLanguageModel(chatLanguageModel)
+	            .tools(agentTools)
+	            .chatMemoryProvider(chatMemoryProvider)
+	            // ✅ THÊM DÒNG NÀY ĐỂ HƯỚNG DẪN AGENT
+	            .systemMessageProvider(sessionId -> "You are a helpful assistant. If you are unsure how to answer, use the 'searchWeb' tool.")
+	            .build();
+	}
+
+    /**
+     * (ĐỔI TÊN/CHỈNH SỬA) Agent mạnh mẽ sử dụng GPT-4.
+     */
+    @Bean
+    @Qualifier("advancedRouterAgent")
+    public ToolUsingAgent advancedRouterAgent( // ✅ SỬ DỤNG TYPE MỚI
+            @Qualifier("advancedChatLanguageModel") ChatLanguageModel chatLanguageModel,
+            ChatMemoryProvider chatMemoryProvider,
+            AgentTools agentTools) {
+        return AiServices.builder(ToolUsingAgent.class) // ✅ BUILD TỪ INTERFACE MỚI
+                .chatLanguageModel(chatLanguageModel)
+                .tools(agentTools)
+                .chatMemoryProvider(chatMemoryProvider)
+                .build();
+    }
+    
 	// ✅ THÊM BEAN NÀY VÀO
     // Tokenizer giúp đếm số token một cách chính xác trước khi gửi API
     @Bean
@@ -54,17 +91,17 @@ public class LangChain4jConfig {
     }
 	
 	   // ✅ Cập nhật RouterAgent để sử dụng model nâng cao
-    @Bean
-    @Lazy
-    public RouterAgent routerAgent(@Qualifier("advancedChatLanguageModel") ChatLanguageModel chatLanguageModel, // <-- Sửa ở đây
-                                   AgentTools agentTools,
-                                   ChatMemoryProvider chatMemoryProvider) {
-        return AiServices.builder(RouterAgent.class)
-                .chatLanguageModel(chatLanguageModel) // Bây giờ nó sẽ nhận bean GPT-4
-                .tools(agentTools)
-                .chatMemoryProvider(chatMemoryProvider)
-                .build();
-    }
+//    @Bean
+//    @Lazy
+//    public RouterAgent routerAgent(@Qualifier("advancedChatLanguageModel") ChatLanguageModel chatLanguageModel, // <-- Sửa ở đây
+//                                   AgentTools agentTools,
+//                                   ChatMemoryProvider chatMemoryProvider) {
+//        return AiServices.builder(RouterAgent.class)
+//                .chatLanguageModel(chatLanguageModel) // Bây giờ nó sẽ nhận bean GPT-4
+//                .tools(agentTools)
+//                .chatMemoryProvider(chatMemoryProvider)
+//                .build();
+//    }
 
     // ✅ Sửa Bean chính: Chuyển sang GPT-3.5-TURBO làm mặc định
     @Bean
@@ -87,19 +124,46 @@ public class LangChain4jConfig {
     }
 
     // ✅ Tạo một Bean mới dành riêng cho các tác vụ nâng cao
+    /**
+     * ✅ BEAN MỚI: Cung cấp model chi phí thấp (GPT-3.5) cho các tác vụ đơn giản.
+     * Đây chính là bean đã bị thiếu và gây ra lỗi khởi động.
+     */
     @Bean
-    @Qualifier("advancedChatLanguageModel") // <-- Đặt tên định danh
+    @Qualifier("basicChatLanguageModel")
     @Lazy
-    public ChatLanguageModel advancedChatLanguageModel(TokenUsageRepository tokenUsageRepository,
-                                                      UserRepository userRepository) {
-        OpenAiChatModelName modelEnum = OpenAiChatModelName.GPT_4_TURBO_PREVIEW; // <-- Giữ GPT-4 ở đây
+    public ChatLanguageModel basicChatLanguageModel(TokenUsageRepository tokenUsageRepository,
+                                                    UserRepository userRepository) {
+        OpenAiChatModelName modelEnum = OpenAiChatModelName.GPT_3_5_TURBO;
         String modelName = modelEnum.toString();
 
         ChatLanguageModel openAiModel = OpenAiChatModel.builder()
                 .apiKey(openAiApiKey)
                 .modelName(modelEnum)
                 .temperature(0.7)
-                .timeout(Duration.ofSeconds(90)) // Tăng thời gian chờ cho model mạnh hơn
+                .timeout(Duration.ofSeconds(45))
+                .logRequests(true)
+                .logResponses(true)
+                .build();
+        // Giả sử bạn có class TrackedChatLanguageModel để theo dõi token
+        return new TrackedChatLanguageModel(openAiModel, modelName, tokenUsageRepository, userRepository);
+    }
+
+    /**
+     * BEAN NÂNG CAO: Cung cấp model mạnh mẽ (GPT-4) cho các tác vụ phức tạp.
+     */
+    @Bean
+    @Qualifier("advancedChatLanguageModel")
+    @Lazy
+    public ChatLanguageModel advancedChatLanguageModel(TokenUsageRepository tokenUsageRepository,
+                                                       UserRepository userRepository) {
+        OpenAiChatModelName modelEnum = OpenAiChatModelName.GPT_4_TURBO_PREVIEW;
+        String modelName = modelEnum.toString();
+
+        ChatLanguageModel openAiModel = OpenAiChatModel.builder()
+                .apiKey(openAiApiKey)
+                .modelName(modelEnum)
+                .temperature(0.7)
+                .timeout(Duration.ofSeconds(90))
                 .logRequests(true)
                 .logResponses(true)
                 .build();

@@ -3,7 +3,7 @@
 # ===================================================================
 application:
   cache:
-    l2-distance-threshold: 0.1
+    l2-distance-threshold: 0.06
     similarity-threshold: 0.95
     redis-ttl-seconds: 3600
     cleanup-interval-days: 90

@@ -17,12 +17,15 @@ import jakarta.persistence.OneToMany;
 import jakarta.persistence.Table;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
-import lombok.Data;
+import lombok.Getter; // ✅ SỬ DỤNG
 import lombok.NoArgsConstructor;
+import lombok.Setter; // ✅ SỬ DỤNG
+import lombok.ToString; // ✅ THÊM IMPORT
 
 @Entity
 @Table(name = "users")
-@Data
+@Getter // ✅ THAY THẾ @Data
+@Setter // ✅ THAY THẾ @Data
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
@@ -32,12 +35,11 @@ public class User {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    // ... (các thuộc tính khác giữ nguyên)
     @Column(nullable = false, unique = true)
     private String email;
-
     @Column(nullable = false)
     private String password;
-
     private String username;
     private String fullName;
     private Integer age;
@@ -51,7 +53,7 @@ public class User {
     private LocalDateTime registeredAt;
 
     @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true)
-    @JsonIgnore // ✅ CẮT vòng lặp tại đây
+    @JsonIgnore
+    @ToString.Exclude // ✅ DÒNG QUAN TRỌNG NHẤT: Bỏ qua thuộc tính này khi tạo toString()
     private List<ChatSession> sessions = new ArrayList<>();
 }
-

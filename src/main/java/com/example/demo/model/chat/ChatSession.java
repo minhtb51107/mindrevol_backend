@@ -7,24 +7,17 @@ import java.util.List;
 import com.example.demo.model.auth.User;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 
-import jakarta.persistence.CascadeType;
-import jakarta.persistence.Entity;
-import jakarta.persistence.FetchType;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
-import jakarta.persistence.JoinColumn;
-import jakarta.persistence.ManyToOne;
-import jakarta.persistence.OneToMany;
-import jakarta.persistence.PrePersist;
-import jakarta.persistence.PreUpdate;
+import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
-import lombok.Data;
+import lombok.Getter; // ✅ SỬ DỤNG
 import lombok.NoArgsConstructor;
+import lombok.Setter; // ✅ SỬ DỤNG
+import lombok.ToString; // ✅ THÊM IMPORT
 
 @Entity
-@Data
+@Getter // ✅ THAY THẾ @Data
+@Setter // ✅ THAY THẾ @Data
 @Builder
 @AllArgsConstructor
 @NoArgsConstructor
@@ -39,12 +32,14 @@ public class ChatSession {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id", nullable = false)
     @JsonIgnore
+    @ToString.Exclude // ✅ DÒNG QUAN TRỌNG NHẤT: Bỏ qua thuộc tính này khi tạo toString()
     private User user;
 
     private LocalDateTime createdAt = LocalDateTime.now();
     
-    private LocalDateTime updatedAt; // Add this line
+    private LocalDateTime updatedAt;
     
+    // ... (các phương thức @PrePersist, @PreUpdate và các collection khác giữ nguyên)
     @PrePersist
     protected void onCreate() {
         createdAt = LocalDateTime.now();
@@ -58,24 +53,16 @@ public class ChatSession {
 
     @OneToMany(mappedBy = "chatSession", cascade = CascadeType.ALL, orphanRemoval = true)
     @JsonIgnore
+    @ToString.Exclude // Thêm vào đây để đảm bảo an toàn
     private List<ChatMessage> messages = new ArrayList<>();
-
-//    @OneToMany(mappedBy = "chatSession", cascade = CascadeType.ALL, orphanRemoval = true)
-//    @JsonIgnore
-//    private List<MemorySummary> memorySummaries = new ArrayList<>();
     
-//    @OneToMany(mappedBy = "session", cascade = CascadeType.ALL, orphanRemoval = true)
-//    @JsonIgnore
-//    private List<MemorySummaryLog> memorySummaryLogs = new ArrayList<>();
-
-    // ✅ THÊM 2 COLLECTIONS QUAN TRỌNG NÀY
     @OneToMany(mappedBy = "chatSession", cascade = CascadeType.ALL, orphanRemoval = true)
     @JsonIgnore
+    @ToString.Exclude // Thêm vào đây để đảm bảo an toàn
     private List<ConversationState> conversationStates = new ArrayList<>();
 
     @OneToMany(mappedBy = "chatSession", cascade = CascadeType.ALL, orphanRemoval = true)
     @JsonIgnore
+    @ToString.Exclude // Thêm vào đây để đảm bảo an toàn
     private List<EmotionContext> emotionContexts = new ArrayList<>();
-    
-    
 }
