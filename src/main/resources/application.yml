@@ -94,3 +94,10 @@ langchain:
 openai:
   assistant:
     id: "asst_SScFL8Whc5N1NGRFqcRqObh5"
+
+# ==========================
+# Logging Config 📜
+# ==========================
+logging:
+  level:
+    dev.langchain4j.model.openai: DEBUG

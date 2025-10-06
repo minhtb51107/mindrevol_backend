@@ -1,5 +1,14 @@
 package com.example.demo.service.chat.agent;
 
+import java.time.ZonedDateTime;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+
 import com.example.demo.service.chat.ChatMessageService;
 import com.example.demo.service.chat.QuestionAnswerCacheService;
 import com.example.demo.service.chat.agent.tools.ChitChatService;
@@ -11,18 +20,15 @@ import com.example.demo.service.chat.orchestration.rules.FollowUpQueryDetectionS
 import com.example.demo.service.chat.orchestration.rules.QueryIntent;
 import com.example.demo.service.chat.orchestration.rules.QueryIntentClassificationService;
 import com.example.demo.service.chat.orchestration.rules.QueryRewriteService;
+
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.UserMessage;
+import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.stereotype.Service;
 
-import java.time.ZonedDateTime;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @Slf4j
 @Service
@@ -40,6 +46,19 @@ public class OrchestratorService {
     private final ChitChatService chitChatService;
     private final MemoryQueryService memoryQueryService;
     private final GuardrailManager guardrailManager; // <-- THÊM FIELD NÀY
+    
+    private static final Logger logger = LoggerFactory.getLogger(OrchestratorService.class);
+
+
+    @PostConstruct
+    public void initialize() {
+        logger.info("OrchestratorService is initializing...");
+        // Logic khởi tạo của bạn ở đây
+        // Nếu có lời gọi API, hãy thêm log trước và sau nó
+        logger.info("About to make an API call to OpenAI for initialization.");
+        // openAiApi.call(...);
+        logger.info("Finished API call to OpenAI for initialization.");
+    }
 
     @Autowired
     public OrchestratorService(ChatMessageService chatMessageService,

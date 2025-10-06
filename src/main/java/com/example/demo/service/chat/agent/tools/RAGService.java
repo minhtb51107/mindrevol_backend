@@ -7,6 +7,7 @@ import com.example.demo.service.chat.orchestration.context.RagContext;
 import com.example.demo.service.chat.orchestration.pipeline.PipelineManager;
 import com.example.demo.service.chat.tools.SerperWebSearchEngine; // ✅ 1. IMPORT
 import dev.langchain4j.memory.ChatMemory;
+import dev.langchain4j.model.chat.ChatLanguageModel;
 import dev.langchain4j.web.search.WebSearchRequest;
 import dev.langchain4j.web.search.WebSearchResults;
 import lombok.RequiredArgsConstructor;
@@ -24,6 +25,7 @@ public class RAGService {
     private final ChatSessionRepository chatSessionRepository;
     private final LangChainChatMemoryService chatMemoryService;
     private final SerperWebSearchEngine webSearchEngine; // ✅ 2. INJECT CÔNG CỤ TÌM KIẾM
+    private final ChatLanguageModel chatLanguageModel; // ✅ 2. THÊM BIẾN MỚI
 
     @Transactional
     public String answerFromDocuments(String query, Long sessionId) {
@@ -44,7 +46,6 @@ public class RAGService {
         RagContext resultContext = pipelineManager.run(context, "default-rag");
         String reply = resultContext.getReply();
 
-        // ✅ 3. LOGIC TỰ ĐỘNG FALLBACK
         if (reply == null || reply.isEmpty() || isUnhelpfulAnswer(reply)) {
             log.warn("No result from RAG for session {}. Activating AUTOMATIC fallback to web search.", sessionId);
             
@@ -58,8 +59,23 @@ public class RAGService {
                 return "Tôi đã thử tìm trong tài liệu và cả trên Internet nhưng đều không thấy thông tin phù hợp.";
             }
 
-            // Trả về kết quả tìm kiếm trên web
-            return searchResultText; 
+            // ✅ 3. LOGIC MỚI: DÙNG LLM ĐỂ TỔNG HỢP KẾT QUẢ TÌM KIẾM
+            // Tạo một prompt hướng dẫn AI cách trả lời.
+            String prompt = String.format(
+                "Dựa vào những thông tin tìm kiếm được từ Internet dưới đây:\n\n" +
+                "--- Begin Search Results ---\n" +
+                "%s\n" +
+                "--- End Search Results ---\n\n" +
+                "Hãy trả lời câu hỏi của người dùng một cách tự nhiên, đầy đủ và chi tiết nhất có thể. " +
+                "Câu hỏi của người dùng là: \"%s\"",
+                searchResultText, query
+            );
+
+            log.info("Generating final answer using web search context for session {}", sessionId);
+            // Gọi mô hình ngôn ngữ để tạo câu trả lời
+            String finalAnswer = chatLanguageModel.generate(prompt);
+            
+            return finalAnswer; // Trả về câu trả lời đã được AI xử lý
         }
 
         return reply;

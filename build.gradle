@@ -118,6 +118,14 @@ dependencies {
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
     
     implementation 'org.springframework.retry:spring-retry:2.0.5'
+    
+    // ✅ Selenium
+    testImplementation 'org.seleniumhq.selenium:selenium-java:4.24.0'
+    testImplementation 'io.github.bonigarcia:webdrivermanager:5.8.0'
+
+    // ✅ RestAssured + Hamcrest
+    testImplementation 'io.rest-assured:rest-assured:5.5.0'
+    testImplementation 'org.hamcrest:hamcrest:2.2'
 }
 
 tasks.named('test') {

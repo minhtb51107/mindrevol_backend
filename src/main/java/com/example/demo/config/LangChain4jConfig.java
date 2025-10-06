@@ -27,7 +27,7 @@ import dev.langchain4j.model.chat.ChatLanguageModel;
 import dev.langchain4j.model.chat.StreamingChatLanguageModel;
 import dev.langchain4j.model.embedding.EmbeddingModel;
 import dev.langchain4j.model.moderation.ModerationModel;
-import dev.langchain4j.model.openai.*; // Sửa 1: Import cả package
+import dev.langchain4j.model.openai.*;
 import dev.langchain4j.service.AiServices;
 import dev.langchain4j.store.memory.chat.InMemoryChatMemoryStore;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -35,11 +35,9 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Primary;
+import org.springframework.context.annotation.Lazy; // ✅ Thêm import @Lazy
 
 import java.time.Duration;
-
-// Sửa 2: Xóa import cũ không cần thiết
-// import static dev.langchain4j.model.openai.OpenAiModelName.*;
 
 @Configuration
 public class LangChain4jConfig {
@@ -48,49 +46,42 @@ public class LangChain4jConfig {
 	private String openAiApiKey;
 
 	// --- CẤU HÌNH CÁC MODEL CHÍNH ---
-	
-	// ✅ BẠN HÃY THÊM BEAN MỚI NÀY VÀO ĐÂY
-    @Bean
-    public RouterAgent routerAgent(@Qualifier("chatLanguageModel") ChatLanguageModel chatLanguageModel,
-                                   AgentTools agentTools,
-                                   ChatMemoryProvider chatMemoryProvider) {
-        return AiServices.builder(RouterAgent.class)
-                .chatLanguageModel(chatLanguageModel) // Sử dụng model chính, mạnh nhất
-                .tools(agentTools)
-                .chatMemoryProvider(chatMemoryProvider)
-                .build();
-    }
+
+	@Bean
+	public RouterAgent routerAgent(@Qualifier("chatLanguageModel") ChatLanguageModel chatLanguageModel,
+								   AgentTools agentTools,
+								   ChatMemoryProvider chatMemoryProvider) {
+		return AiServices.builder(RouterAgent.class)
+				.chatLanguageModel(chatLanguageModel)
+				.tools(agentTools)
+				.chatMemoryProvider(chatMemoryProvider)
+				.build();
+	}
 
 	@Bean
 	@Primary
+	@Lazy // ✅ Thêm @Lazy
 	public ChatLanguageModel chatLanguageModel(TokenUsageRepository tokenUsageRepository,
 			UserRepository userRepository) {
-		// Sửa 3: Sử dụng Enum và gọi .toString() khi cần
-		OpenAiChatModelName modelEnum = OpenAiChatModelName.GPT_4_TURBO_PREVIEW; // Dùng model mới nhất có thể
+
+		OpenAiChatModelName modelEnum = OpenAiChatModelName.GPT_4_TURBO_PREVIEW;
 		String modelName = modelEnum.toString();
 
 		ChatLanguageModel openAiModel = OpenAiChatModel.builder()
 				.apiKey(openAiApiKey)
-				.modelName(modelEnum) // Truyền thẳng Enum vào đây
-				.temperature(0.7).timeout(Duration.ofSeconds(45)).logRequests(true).logResponses(true).build();
+				.modelName(modelEnum)
+				.temperature(0.7)
+				.timeout(Duration.ofSeconds(45))
+				.logRequests(true)
+				.logResponses(true)
+				.build();
+
 		return new TrackedChatLanguageModel(openAiModel, modelName, tokenUsageRepository, userRepository);
 	}
 
-//	@Bean
-//	@Qualifier("routingModel")
-//	public ChatLanguageModel routingModel(TokenUsageRepository tokenUsageRepository, UserRepository userRepository) {
-//		OpenAiChatModelName modelEnum = OpenAiChatModelName.GPT_3_5_TURBO;
-//		String modelName = modelEnum.toString();
-//
-//		ChatLanguageModel openAiModel = OpenAiChatModel.builder()
-//				.apiKey(openAiApiKey)
-//				.modelName(modelEnum) // Truyền thẳng Enum
-//				.temperature(0.0).timeout(Duration.ofSeconds(20)).build();
-//		return new RoutingTrackedChatLanguageModel(openAiModel, modelName, tokenUsageRepository, userRepository);
-//	}
-
 	@Bean
 	@Qualifier("classificationModel")
+	@Lazy // ✅ Thêm @Lazy
 	public ChatLanguageModel classificationModel(TokenUsageRepository tokenUsageRepository,
 			UserRepository userRepository) {
 		OpenAiChatModelName modelEnum = OpenAiChatModelName.GPT_3_5_TURBO;
@@ -98,35 +89,33 @@ public class LangChain4jConfig {
 
 		ChatLanguageModel openAiModel = OpenAiChatModel.builder()
 				.apiKey(openAiApiKey)
-				.modelName(modelEnum) // Truyền thẳng Enum
-				.temperature(0.3).timeout(Duration.ofSeconds(20)).build();
+				.modelName(modelEnum)
+				.temperature(0.3)
+				.timeout(Duration.ofSeconds(20))
+				.build();
+
 		return new TrackedChatLanguageModel(openAiModel, modelName, tokenUsageRepository, userRepository);
 	}
 
 	@Bean
-    public EmbeddingModel embeddingModel(TokenUsageRepository tokenUsageRepository, 
-                                         UserRepository userRepository,
-                                         EmbeddingCacheService embeddingCacheService) { // <-- Thêm tham số
-        OpenAiEmbeddingModelName modelEnum = OpenAiEmbeddingModelName.TEXT_EMBEDDING_ADA_002;
-        String modelName = modelEnum.toString();
+	@Lazy // ✅ Thêm @Lazy
+	public EmbeddingModel embeddingModel(TokenUsageRepository tokenUsageRepository, 
+										 UserRepository userRepository,
+										 EmbeddingCacheService embeddingCacheService) {
 
-        EmbeddingModel openAiEmbeddingModel = OpenAiEmbeddingModel.builder()
-                .apiKey(openAiApiKey)
-                .modelName(modelEnum)
-                .timeout(Duration.ofSeconds(30)).build();
-        
-        // Bọc model gốc với tracking
-        EmbeddingModel trackedModel = new TrackedEmbeddingModel(openAiEmbeddingModel, modelName, tokenUsageRepository, userRepository);
+		OpenAiEmbeddingModelName modelEnum = OpenAiEmbeddingModelName.TEXT_EMBEDDING_ADA_002;
+		String modelName = modelEnum.toString();
 
-        // Bọc tiếp model đã tracking với caching
-        return new CachedEmbeddingModel(trackedModel, embeddingCacheService);
-    }
+		EmbeddingModel openAiEmbeddingModel = OpenAiEmbeddingModel.builder()
+				.apiKey(openAiApiKey)
+				.modelName(modelEnum)
+				.timeout(Duration.ofSeconds(30))
+				.build();
 
-	// --- CẤU HÌNH CÁC AI SERVICE (Không thay đổi) ---
-//	@Bean
-//	public QueryRouterService queryRouterService(@Qualifier("routingModel") ChatLanguageModel model) {
-//		return AiServices.create(QueryRouterService.class, model);
-//	}
+		EmbeddingModel trackedModel = new TrackedEmbeddingModel(openAiEmbeddingModel, modelName, tokenUsageRepository, userRepository);
+
+		return new CachedEmbeddingModel(trackedModel, embeddingCacheService);
+	}
 
 	@Bean
 	public QueryIntentClassificationService queryIntentClassificationService(@Qualifier("classificationModel") ChatLanguageModel model) {
@@ -147,65 +136,44 @@ public class LangChain4jConfig {
 	public FinancialAnalystAgent financialAnalystAgent(ChatLanguageModel chatLanguageModel) {
 		return AiServices.create(FinancialAnalystAgent.class, chatLanguageModel);
 	}
-	
-	// ✅ THÊM BEAN MỚI NÀY VÀO ĐÂY
+
 	@Bean
-	@Qualifier("titleGenerationModel") // Đặt tên định danh cho model này
-	public ChatLanguageModel titleGenerationModel(TokenUsageRepository tokenUsageRepository, 
-                                                UserRepository userRepository) {
+	@Qualifier("titleGenerationModel")
+	@Lazy // ✅ Thêm @Lazy
+	public ChatLanguageModel titleGenerationModel(TokenUsageRepository tokenUsageRepository,
+												  UserRepository userRepository) {
 		OpenAiChatModelName modelEnum = OpenAiChatModelName.GPT_3_5_TURBO;
 		String modelName = modelEnum.toString();
 
 		ChatLanguageModel openAiModel = OpenAiChatModel.builder()
 				.apiKey(openAiApiKey)
 				.modelName(modelEnum)
-				.temperature(0.5) // Nhiệt độ vừa phải để có tiêu đề sáng tạo một chút
-                .timeout(Duration.ofSeconds(15)) // Thời gian chờ ngắn hơn cho tác vụ đơn giản
-                .build();
-		
-        // Vẫn bọc bằng TrackedChatLanguageModel để theo dõi chi phí
+				.temperature(0.5)
+				.timeout(Duration.ofSeconds(15))
+				.build();
+
 		return new TrackedChatLanguageModel(openAiModel, modelName, tokenUsageRepository, userRepository);
 	}
-	
+
 	@Bean
+	@Lazy // ✅ Thêm @Lazy
 	public ModerationModel moderationModel(@Value("${langchain.chat-model.openai.api-key}") String apiKey) {
-	    return OpenAiModerationModel.builder()
-	            .apiKey(apiKey)
-	            .build();
+		return OpenAiModerationModel.builder()
+				.apiKey(apiKey)
+				.build();
 	}
-	
-//	@Bean
-//	public ToolAgent toolAgent(ChatLanguageModel chatLanguageModel,
-//	                           ChatMemoryProvider chatMemoryProvider, // Thêm tham số này
-//	                           SerperWebSearchEngine serperWebSearchEngine,
-//	                           TimeTool timeTool,
-//	                           WeatherTool weatherTool,
-//	                           StockTool stockTool) {
-//	    return AiServices.builder(ToolAgent.class)
-//	            .chatLanguageModel(chatLanguageModel)
-//	            .chatMemoryProvider(chatMemoryProvider) // Cung cấp memory provider
-//	            .tools(serperWebSearchEngine, timeTool, weatherTool, stockTool)
-//	            .build();
-//	}
-
-	// --- CÁC BEAN PHỤ TRỢ KHÁC ---
-
-//	@Bean
-//	public StreamingChatLanguageModel streamingChatLanguageModel(
-//			@Value("${langchain4j.open-ai.chat-model.model-name}") String chatModelName) {
-//		return OpenAiStreamingChatModel.builder().apiKey(openAiApiKey).modelName(chatModelName)
-//				.temperature(0.7).timeout(Duration.ofSeconds(60)).build();
-//	}
 
 	@Bean
 	public DocumentSplitter documentSplitter() {
-		// Sửa 4: Sử dụng tokenizer của model GPT-4
 		return DocumentSplitters.recursive(500, 50, new OpenAiTokenizer(OpenAiChatModelName.GPT_4));
 	}
 
 	@Bean
 	public ChatMemoryProvider chatMemoryProvider() {
-		return sessionId -> MessageWindowChatMemory.builder().id(sessionId).maxMessages(20)
-				.chatMemoryStore(new InMemoryChatMemoryStore()).build();
+		return sessionId -> MessageWindowChatMemory.builder()
+				.id(sessionId)
+				.maxMessages(20)
+				.chatMemoryStore(new InMemoryChatMemoryStore())
+				.build();
 	}
 }
